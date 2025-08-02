@@ -18,6 +18,7 @@ const shipmentSchema = new mongoose.Schema({
   shipmentDate: Date,
   deliveryDate: Date,
   notes: String,
+  replies: [replySchema],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Shipment', shipmentSchema);
