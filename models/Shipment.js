@@ -4,7 +4,7 @@ const replySchema = new mongoose.Schema({
   message: { type: String, required: true },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // optional: who sent the reply
   timestamp: { type: Date, default: Date.now }
-}, { _id: false });
+}, { _id: true });
 
 const shipmentSchema = new mongoose.Schema({
   trackingNumber: { type: String, required: true, unique: true },
