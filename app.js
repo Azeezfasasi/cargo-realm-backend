@@ -34,9 +34,10 @@ app.use('/api/prayer-requests', require('./routes/prayerRequestRoutes'));
 app.use('/api/blogs', require('./routes/blogRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/appointments', require('./routes/appointmentRoutes'));
+app.use('/api/shipments', require('./routes/shipmentRoutes'));
 
 app.get('/', (req, res) => {
-  res.send('Welcome to CAC Lightway Backend!');
+  res.send('Welcome to Cargo Realm and Logistics!');
 });
 
 const PORT = process.env.PORT || 5000;
