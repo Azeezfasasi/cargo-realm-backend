@@ -22,7 +22,7 @@ router.put('/:id', authenticate, shipmentController.editShipment);
 router.delete('/:id', authenticate, authorize('admin'), shipmentController.deleteShipment);
 
 // Change shipment status (Admin/Agent only) PATCH - /api/shipments/:id/status
-router.patch('/:id/status', authenticate, authorize('admin', 'agent'), shipmentController.changeShipmentStatus);
+router.patch('/:id/status', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.changeShipmentStatus);
 
 // Reply to a shipment (Authenticated users) POST - /api/shipments/:id/reply
 router.post('/:id/reply', authenticate, shipmentController.replyToShipment);

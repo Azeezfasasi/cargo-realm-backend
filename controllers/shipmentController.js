@@ -100,7 +100,7 @@ exports.createShipment = async (req, res) => {
 exports.editShipment = async (req, res) => {
   try {
     const { id } = req.params;
-    const shipment = await Shipment.findById(id);
+    const shipment = await Shipment.findById(id).populate('sender', 'name');
     if (!shipment) {
       return res.status(404).json({ message: 'Shipment not found' });
     }
@@ -207,30 +207,6 @@ exports.generateWaybill = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
-// 11. Reply to shipment (simple notes addition)
-// exports.replyToShipment = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { note } = req.body;
-//     const shipment = await Shipment.findById(id);
-//     if (!shipment) {
-//       return res.status(404).json({ message: 'Shipment not found' });
-//     }
-
-//     const updatedNotes = shipment.notes ? `${shipment.notes}\n---\nReply: ${note}` : `Reply: ${note}`;
-//     const updatedShipment = await Shipment.findByIdAndUpdate(id, { notes: updatedNotes }, { new: true });
-    
-//     // --- EMAIL NOTIFICATION: SHIPMENT REPLY ---
-//     const subject = `New Reply for Shipment: #${updatedShipment.trackingNumber}`;
-//     const body = `A new reply has been added to your shipment with tracking number ${updatedShipment.trackingNumber}. The new note is: "${note}".`;
-//     await sendShipmentNotification(updatedShipment, subject, body);
-    
-//     res.json(updatedShipment);
-//   } catch (err) {
-//     res.status(400).json({ message: err.message });
-//   }
-// };
 
 // 11. Reply to shipment (push to replies array)
 exports.replyToShipment = async (req, res) => {
