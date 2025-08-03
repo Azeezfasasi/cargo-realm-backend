@@ -9,6 +9,9 @@ const replySchema = new mongoose.Schema({
 const shipmentSchema = new mongoose.Schema({
   trackingNumber: { type: String, required: true, unique: true },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, default: null },
+  senderName: String,
+  senderPhone: String,
+  senderAddress: String,
   recipientName: String,
   recipientPhone: String,
   recipientAddress: String,
