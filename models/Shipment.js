@@ -16,7 +16,7 @@ const shipmentSchema = new mongoose.Schema({
   destination: String,
   status: {
     type: String,
-    enum: ['pending', 'in-transit', 'delivered', 'cancelled', 'processing', 'pickup-scheduled', 'out-for-delivery', 'picked-up', 'arrived-at-hub', 'departed-from-hub', 'on-hold', 'customs-clearance', 'Awaiting Pickup', 'failed-delivery-attempt'
+    enum: ['pending', 'in-transit', 'delivered', 'cancelled', 'processing', 'pickup-scheduled', 'out-for-delivery', 'picked-up', 'arrived-at-hub', 'departed-from-hub', 'on-hold', 'customs-clearance', 'Awaiting Pickup', 'failed-delivery-attempt', 'Awaiting Delivery'
     ],
     default: 'pending',
   },

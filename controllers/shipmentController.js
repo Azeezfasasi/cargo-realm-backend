@@ -125,19 +125,32 @@ exports.editShipment = async (req, res) => {
 };
 
 // 6. Delete a shipment (Admin only)
+// exports.deleteShipment = async (req, res) => {
+//   try {
+//     // `adminAuth` middleware handles role checking
+//     const { id } = req.params;
+//     const shipment = await Shipment.findByIdAndDelete(id);
+//     if (!shipment) {
+//       return res.status(404).json({ message: 'Shipment not found' });
+//     }
+//     res.json({ message: 'Shipment deleted successfully.' });
+//   } catch (err) {
+//     res.status(500).json({ message: err.message });
+//   }
+// };
 exports.deleteShipment = async (req, res) => {
   try {
-    // `adminAuth` middleware handles role checking
     const { id } = req.params;
-    const shipment = await Shipment.findByIdAndDelete(id);
-    if (!shipment) {
+    const deleted = await Shipment.findByIdAndDelete(id);
+    if (!deleted) {
       return res.status(404).json({ message: 'Shipment not found' });
     }
-    res.json({ message: 'Shipment deleted successfully.' });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(200).json({ message: 'Shipment deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
+
 
 // 7. Change shipment status (Admin/Agent)
 exports.changeShipmentStatus = async (req, res) => {
