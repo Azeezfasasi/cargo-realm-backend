@@ -14,6 +14,7 @@ const shipmentSchema = new mongoose.Schema({
   senderEmail: String,
   senderAddress: String,
   recipientName: String,
+  receiverEmail: String,
   recipientPhone: String,
   recipientAddress: String,
   origin: String,
