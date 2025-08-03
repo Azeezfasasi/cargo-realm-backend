@@ -5,6 +5,12 @@ const contactFormSchema = new mongoose.Schema({
   email: { type: String, required: true },
   phoneNumber: { type: String },
   message: { type: String, required: true },
+  shippingType: { type: String, enum: ['Air Freight', 'Sea Freight', 'Road Transport', 'Other'], default: 'Air Freight' }, 
+  originCountry: { type: String },
+  destinationCountry: { type: String },
+  weight: { type: String },
+  length: { type: String },
+  height: { type: String },
   status: { type: String, enum: ['new', 'read', 'replied', 'archived'], default: 'new' }, // Added 'replied' status
   repliedBy: { // NEW: User who replied
     type: mongoose.Schema.Types.ObjectId,
