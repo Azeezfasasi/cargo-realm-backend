@@ -11,6 +11,7 @@ const shipmentSchema = new mongoose.Schema({
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, default: null },
   senderName: String,
   senderPhone: String,
+  senderEmail: String,
   senderAddress: String,
   recipientName: String,
   recipientPhone: String,
