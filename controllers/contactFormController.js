@@ -8,18 +8,18 @@ exports.submitContactForm = async (req, res) => {
     const contact = new ContactForm({ name, email, phoneNumber, message });
     await contact.save();
     // Email to user (sender)
-    await sendMail(email, 'Contact Form Received - CAC Lightway Assembly',
-      `<p>Dear ${name},</p>
-       <p>Thank you for contacting CAC Lightway Assembly. We have received your message and will get back to you as soon as possible.</p>
+    await sendMail(email, 'Quote Request Received - Cargo Realm and Logistics',
+      `<p>Hi ${name},</p>
+       <p>Thank you for contacting Cargo Realm and Logistics. We have received your quote request and will get back to you as soon as possible.</p>
        <p>Your message:</p>
        <blockquote style="border-left: 4px solid #ccc; margin: 0; padding-left: 10px; color: #555;">
          <p>${message}</p>
        </blockquote>
        <p>Sincerely,</p>
-       <p>The CAC Lightway Team</p>`
+       <p>Cargo Realm and Logistics Team</p>`
     );
     // Email to admin
-    await sendMail(process.env.EMAIL_USER, 'New Contact Form Submission',
+    await sendMail(process.env.EMAIL_USER, 'New Quote Request Submission',
       `<p>New message from ${name} (${email}):</p>
        <p>Phone: ${phoneNumber || 'N/A'}</p>
        <p>Message:</p>
@@ -85,8 +85,8 @@ exports.replyToContactForm = async (req, res) => {
 
     // Send email to the sender
     const emailContent = `
-      <p>Dear ${contactForm.name || 'Valued Member'},</p>
-      <p>Thank you for your message. Here is a reply from CAC Lightway Assembly:</p>
+      <p>Hi ${contactForm.name || 'Valued Member'},</p>
+      <p>Thank you for your message. Here is a reply from Cargo Realm and Logistics:</p>
       <blockquote style="border-left: 4px solid #ccc; margin: 0; padding-left: 10px; color: #555;">
         <p>${replyContent}</p>
       </blockquote>
@@ -95,7 +95,7 @@ exports.replyToContactForm = async (req, res) => {
         <p>${contactForm.message}</p>
       </blockquote>
       <p>Sincerely,</p>
-      <p>The CAC Lightway Team</p>
+      <p>Cargo Realm and Logistics Team</p>
     `;
     await sendMail(contactForm.email, subject, emailContent);
 

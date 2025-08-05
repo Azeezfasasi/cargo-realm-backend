@@ -11,29 +11,29 @@ router.post('/', appointmentController.createAppointment);
 router.post('/authenticated', authenticate, appointmentController.createAppointment);
 
 // Admin/Pastor routes for managing appointments - GET /api/appointments
-router.get('/', authenticate, authorize('admin', 'pastor'), appointmentController.getAllAppointments);
+router.get('/', authenticate, authorize('admin', 'employee'), appointmentController.getAllAppointments);
 
 // Route for logged-in users to get their own appointments
 router.get('/my-appointments', authenticate, appointmentController.getMyAppointments);
 
 // GET /api/appointments/:id - Get a single appointment (Admin/Pastor or bookedBy user)
-router.get('/:id', authenticate, authorize('admin', 'pastor', 'member'), appointmentController.getAppointmentById); // Member can view their own
+router.get('/:id', authenticate, authorize('admin', 'employee', 'client', 'agent'), appointmentController.getAppointmentById); // Member can view their own
 
 // PUT /api/appointments/:id - Update appointment details (Admin/Pastor only)
-router.put('/:id', authenticate, authorize('admin', 'pastor'), appointmentController.updateAppointment);
+router.put('/:id', authenticate, authorize('admin', 'employee'), appointmentController.updateAppointment);
 
 // DELETE /api/appointments/:id - Delete an appointment (Admin/Pastor only)
-router.delete('/:id', authenticate, authorize('admin', 'pastor'), appointmentController.deleteAppointment);
+router.delete('/:id', authenticate, authorize('admin', 'employee'), appointmentController.deleteAppointment);
 
 // PATCH /api/appointments/:id/reschedule - Reschedule an appointment
 // Accessible by authenticated users (admin/pastor/member)
-router.patch('/:id/reschedule', authenticate, authorize('admin', 'pastor', 'member'), appointmentController.rescheduleAppointment);
+router.patch('/:id/reschedule', authenticate, authorize('admin', 'employee', 'agent', 'client'), appointmentController.rescheduleAppointment);
 
 // PATCH /api/appointments/:id/cancel - Cancel an appointment
 // Accessible by authenticated users (admin/pastor/member)
-router.patch('/:id/cancel', authenticate, authorize('admin', 'pastor', 'member'), appointmentController.cancelAppointment);
+router.patch('/:id/cancel', authenticate, authorize('admin', 'employee', 'client', 'agent'), appointmentController.cancelAppointment);
 
 // PATCH /api/appointments/:id/status - Change appointment status (Admin/Pastor only)
-router.patch('/:id/status', authenticate, authorize('admin', 'pastor'), appointmentController.changeAppointmentStatus);
+router.patch('/:id/status', authenticate, authorize('admin', 'employee', 'agent', 'client'), appointmentController.changeAppointmentStatus);
 
 module.exports = router;

@@ -27,9 +27,6 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
     
-    // --- REMOVE THIS LINE: const hashedPassword = await bcrypt.hash(password, 10); ---
-    // The pre('save') hook in the User model will handle hashing automatically.
-    
     user = new User({ name, email, password, role, phoneNumber, gender }); // Pass plain text password
     await user.save(); // The pre('save') hook will hash 'password' before saving
 
@@ -37,7 +34,7 @@ exports.register = async (req, res) => {
     console.log('Registered User (after save, with hashed password):', user.password); // Verify it's hashed
     
     // Optional: Send welcome email
-    await sendMail(email, 'Welcome to CAC Lightway', `<p>Hi ${name}, welcome to CAC Lightway Assembly!</p>`);
+    await sendMail(email, 'Welcome to Cargo Realm and Logistics', `<p>Hi ${name}, welcome to Cargo Realm and Logistics!</p>`);
     
     // If you want to log in the user immediately after registration and send a token:
     const token = generateToken(user._id, user.role);
@@ -252,11 +249,11 @@ exports.changeUserPasswordByAdmin = async (req, res) => {
 
     // Optional: Send a notification email to the user whose password was changed
     await sendMail(userToUpdate.email, 'Your Password Has Been Changed',
-      `<p>Dear ${userToUpdate.name},</p>
-       <p>Your password for CAC Lightway account has been changed by an administrator/pastor.</p>
+      `<p>Hi ${userToUpdate.name},</p>
+       <p>Your password for Cargo Realm and Logistics account has been changed by an administrator.</p>
        <p>If you did not request this change, please contact support immediately.</p>
        <p>Thank you,</p>
-       <p>CAC Lightway Team</p>`
+       <p>Cargo Realm and Logistics Team</p>`
     );
 
     res.json({ message: 'User password updated successfully.' });

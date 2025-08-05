@@ -4,10 +4,10 @@ const galleryController = require('../controllers/galleryController');
 const { authenticate, authorize } = require('../middleware/auth');
 const cloudinaryUpload = require('../middleware/uploadMiddleware');
 
-router.post('/', authenticate, authorize('admin','pastor'), cloudinaryUpload, galleryController.addImage);
+router.post('/', authenticate, authorize('admin','employee'), cloudinaryUpload, galleryController.addImage);
 router.get('/', galleryController.getAllImages);
-router.put('/:id', authenticate, authorize('admin','pastor'), cloudinaryUpload, galleryController.editImage);
-router.delete('/:id', authenticate, authorize('admin','pastor'), galleryController.deleteImage);
-router.patch('/:id/status', authenticate, authorize('admin','pastor'), galleryController.changeImageStatus);
+router.put('/:id', authenticate, authorize('admin','employee'), cloudinaryUpload, galleryController.editImage);
+router.delete('/:id', authenticate, authorize('admin','employee'), galleryController.deleteImage);
+router.patch('/:id/status', authenticate, authorize('admin','employee'), galleryController.changeImageStatus);
 
 module.exports = router;

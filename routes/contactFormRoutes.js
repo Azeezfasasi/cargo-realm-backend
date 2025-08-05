@@ -9,9 +9,6 @@ router.post('/', contactFormController.submitContactForm);
 // Route to get all contact forms GET - /api/contact
 router.get('/', authenticate, authorize('admin', 'employee'), contactFormController.getAllContactForms);
 
-// Route to get a single contact form GET - /api/contact/:id
-// router.get('/:id', authenticate, authorize('admin', 'employee'), contactFormController.getContactForm);
-
 // Route to edit a contact form PUT - /api/contact/:id
 router.put('/:id', authenticate, authorize('admin', 'employee'), contactFormController.editContactForm);
 

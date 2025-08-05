@@ -14,11 +14,11 @@ router.get('/me', authenticate, profileController.getMe);
 router.put('/edit/:id', authenticate, cloudinaryUpload, profileController.editUser);
 
 // Admin-only routes (require authentication and 'admin' role)
-router.delete('/delete/:id', authenticate, authorize('admin', 'pastor'), profileController.deleteUser);
-router.put('/disable/:id', authenticate, authorize('admin', 'pastor'), profileController.disableUser);
-router.put('/suspend/:id', authenticate, authorize('admin', 'pastor'), profileController.suspendUser);
-router.get('/all', authenticate, authorize('admin', 'pastor'), profileController.getAllUsers);
-router.patch('/admin/change-password', authenticate, authorize('admin', 'pastor'), profileController.changeUserPasswordByAdmin);
+router.delete('/delete/:id', authenticate, authorize('admin'), profileController.deleteUser);
+router.put('/disable/:id', authenticate, authorize('admin', 'employee'), profileController.disableUser);
+router.put('/suspend/:id', authenticate, authorize('admin', 'employee'), profileController.suspendUser);
+router.get('/all', authenticate, authorize('admin', 'employee'), profileController.getAllUsers);
+router.patch('/admin/change-password', authenticate, authorize('admin', 'employee'), profileController.changeUserPasswordByAdmin);
 
 
 module.exports = router;

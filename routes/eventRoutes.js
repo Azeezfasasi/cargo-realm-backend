@@ -7,10 +7,10 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.get('/', eventController.getAllEvents);
 
 // Private routes
-router.get('/admin/all', authenticate, authorize('admin', 'pastor'), eventController.getAllEventsForAdmin);
-router.post('/', authenticate, authorize('admin', 'pastor'), eventController.createEvent);
-router.put('/:id', authenticate, authorize('admin', 'pastor'), eventController.editEvent);
-router.delete('/:id', authenticate, authorize('admin', 'pastor'), eventController.deleteEvent);
-router.patch('/:id/status', authenticate, authorize('admin', 'pastor'), eventController.changeEventStatus);
+router.get('/admin/all', authenticate, authorize('admin', 'employee'), eventController.getAllEventsForAdmin);
+router.post('/', authenticate, authorize('admin', 'employee'), eventController.createEvent);
+router.put('/:id', authenticate, authorize('admin', 'employee'), eventController.editEvent);
+router.delete('/:id', authenticate, authorize('admin', 'employee'), eventController.deleteEvent);
+router.patch('/:id/status', authenticate, authorize('admin', 'employee'), eventController.changeEventStatus);
 
 module.exports = router;

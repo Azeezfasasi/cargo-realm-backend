@@ -9,10 +9,10 @@ router.get('/:id', blogController.getBlogById);
 
 
 // Protected routes (require authentication)
-router.get('/admin/all', authenticate, authorize('admin', 'pastor'), blogController.getAllBlogsForAdmin);
-router.post('/', authenticate, authorize('admin', 'pastor'), blogController.createBlog);
-router.put('/:id', authenticate, authorize('admin', 'pastor'), blogController.editBlog);
-router.delete('/:id', authenticate, authorize('admin', 'pastor'), blogController.deleteBlog);
-router.patch('/:id/status', authenticate, authorize('admin', 'pastor'), blogController.changeBlogStatus);
+router.get('/admin/all', authenticate, authorize('admin', 'employee'), blogController.getAllBlogsForAdmin);
+router.post('/', authenticate, authorize('admin', 'employee'), blogController.createBlog);
+router.put('/:id', authenticate, authorize('admin', 'employee'), blogController.editBlog);
+router.delete('/:id', authenticate, authorize('admin', 'employee'), blogController.deleteBlog);
+router.patch('/:id/status', authenticate, authorize('admin', 'employee'), blogController.changeBlogStatus);
 
 module.exports = router;
