@@ -3,6 +3,40 @@ const sendMail = require('../utils/mailer');
 const User = require('../models/User'); 
 
 // Helper function to send email notifications
+// const sendShipmentNotification = async (shipment, subject, body) => {
+//   try {
+//     if (!shipment.sender) {
+//       console.error('Shipment has no sender. Skipping email notification.');
+//       return;
+//     }
+
+//     // Fetch the sender's email address using the User model
+//     const sender = await User.findById(shipment.sender);
+//     if (!sender || !sender.email) {
+//       console.error('Sender not found or email is missing. Skipping email notification.');
+//       return;
+//     }
+
+//     const emailTo = sender.email;
+//     const htmlBody = `
+//       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+//         <h2 style="color: #0056b3;">${subject}</h2>
+//         <p>Hello,</p>
+//         <p>${body}</p>
+//         <p><strong>Tracking Number:</strong> ${shipment.trackingNumber}</p>
+//         <p><strong>Current Status:</strong> ${shipment.status}</p>
+//         <p>Thank you for using our service.</p>
+//         <p>The Cargo Realm Team</p>
+//       </div>
+//     `;
+
+//     await sendMail(emailTo, subject, htmlBody);
+//     console.log(`Email sent to ${emailTo} successfully.`);
+//   } catch (error) {
+//     console.error('Failed to send email notification:', error);
+//   }
+// };
+
 const sendShipmentNotification = async (shipment, subject, body) => {
   try {
     if (!shipment.sender) {
@@ -10,14 +44,20 @@ const sendShipmentNotification = async (shipment, subject, body) => {
       return;
     }
 
-    // Fetch the sender's email address using the User model
     const sender = await User.findById(shipment.sender);
     if (!sender || !sender.email) {
       console.error('Sender not found or email is missing. Skipping email notification.');
       return;
     }
 
-    const emailTo = sender.email;
+    const senderEmail = sender.email;
+
+    // Get admin emails from env and format into array
+    const adminEmails = process.env.ADMIN_EMAILS
+      ? process.env.ADMIN_EMAILS.split(',').map(email => email.trim())
+      : [];
+
+    // Compose HTML body
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2 style="color: #0056b3;">${subject}</h2>
@@ -30,12 +70,16 @@ const sendShipmentNotification = async (shipment, subject, body) => {
       </div>
     `;
 
-    await sendMail(emailTo, subject, htmlBody);
-    console.log(`Email sent to ${emailTo} successfully.`);
+    // Send email to sender and admins
+    const recipients = [senderEmail, ...adminEmails];
+
+    await sendMail(recipients, subject, htmlBody);
+    console.log(`Email sent to sender and admins: ${recipients.join(', ')}`);
   } catch (error) {
     console.error('Failed to send email notification:', error);
   }
 };
+
 
 
 // 1. Fetch all shipments (Admin/Agent/Employee)
@@ -89,6 +133,11 @@ exports.createShipment = async (req, res) => {
     const subject = `New Shipment Created: #${savedShipment.trackingNumber}`;
     const body = `A new shipment has been created for you with the tracking number ${savedShipment.trackingNumber}.`;
     await sendShipmentNotification(savedShipment, subject, body);
+
+    // --- EMAIL NOTIFICATION: ADMIN NOTIFICATION ---
+    const adminSubject = `Admin Notification: New Shipment Created #${shipment.trackingNumber}`;
+    const adminBody = `<p>Shipment was created by user ${sender.name} (${sender.email}).</p>`;
+    await sendMail(adminEmails, adminSubject, adminBody);
     
     res.status(201).json(savedShipment);
   } catch (err) {
@@ -117,7 +166,12 @@ exports.editShipment = async (req, res) => {
     const subject = `Shipment Updated: #${updatedShipment.trackingNumber}`;
     const body = `Details for your shipment with tracking number ${updatedShipment.trackingNumber} have been updated.`;
     await sendShipmentNotification(updatedShipment, subject, body);
-    
+
+    // --- EMAIL NOTIFICATION: ADMIN NOTIFICATION ---
+    const adminSubject = `Admin Notification: Shipment updated #${shipment.trackingNumber}`;
+    const adminBody = `<p>Shipment with tracking number ${updatedShipment.trackingNumber} by user ${sender.name} (${sender.email}) has been updated.</p>`;
+    await sendMail(adminEmails, adminSubject, adminBody);
+
     res.json(updatedShipment);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -158,6 +212,12 @@ exports.changeShipmentStatus = async (req, res) => {
     const subject = `Status Update for Shipment: #${updatedShipment.trackingNumber}`;
     const body = `The status of your shipment has been changed to **${updatedShipment.status}**.`;
     await sendShipmentNotification(updatedShipment, subject, body);
+
+    // --- EMAIL NOTIFICATION: ADMIN NOTIFICATION ---
+    const adminSubject = `Status Update for Shipment: #${shipment.trackingNumber}`;
+    const adminBody = `<p>The status of shipment with tracking number ${updatedShipment.trackingNumber} by user ${sender.name} (${sender.email}) has been updated.</p>`;
+    await sendMail(adminEmails, adminSubject, adminBody);
+
     
     res.json(updatedShipment);
   } catch (err) {
@@ -231,6 +291,12 @@ exports.replyToShipment = async (req, res) => {
     const subject = `New Reply for Shipment: #${shipment.trackingNumber}`;
     const body = `A new reply has been added to your shipment with tracking number ${shipment.trackingNumber}. The message is: "${message}".`;
     await sendShipmentNotification(shipment, subject, body);
+
+    // Send notification to admin
+    const adminSubject = `New Reply for Shipment: #${shipment.trackingNumber}`;
+    const adminBody = `<p>A new reply has been added to the shipment with tracking number ${shipment.trackingNumber} for ${sender.name} (${sender.email}). The message is: "${message}".</p>`;
+    await sendMail(adminEmails, adminSubject, adminBody);
+
 
     res.json(shipment);
   } catch (err) {
