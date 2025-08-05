@@ -44,7 +44,8 @@ const sendShipmentNotification = async (shipment, subject, body) => {
       return;
     }
 
-    const sender = await User.findById(shipment.sender);
+    // const sender = await User.findById(shipment.sender);
+    const sender = await User.findById(savedShipment.sender);
     if (!sender || !sender.email) {
       console.error('Sender not found or email is missing. Skipping email notification.');
       return;
@@ -52,10 +53,12 @@ const sendShipmentNotification = async (shipment, subject, body) => {
 
     const senderEmail = sender.email;
 
+    // const sender = await User.findById(savedShipment.sender);
     // Get admin emails from env and format into array
-    const adminEmails = process.env.ADMIN_EMAILS
-      ? process.env.ADMIN_EMAILS.split(',').map(email => email.trim())
-      : [];
+    // const adminEmails = process.env.ADMIN_EMAILS
+    //   ? process.env.ADMIN_EMAILS.split(',').map(email => email.trim())
+    //   : [];
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
 
     // Compose HTML body
     const htmlBody = `
@@ -79,8 +82,6 @@ const sendShipmentNotification = async (shipment, subject, body) => {
     console.error('Failed to send email notification:', error);
   }
 };
-
-
 
 // 1. Fetch all shipments (Admin/Agent/Employee)
 exports.getAllShipments = async (req, res) => {
@@ -135,8 +136,15 @@ exports.createShipment = async (req, res) => {
     await sendShipmentNotification(savedShipment, subject, body);
 
     // --- EMAIL NOTIFICATION: ADMIN NOTIFICATION ---
-    const adminSubject = `Admin Notification: New Shipment Created #${shipment.trackingNumber}`;
-    const adminBody = `<p>Shipment was created by user ${sender.name} (${sender.email}).</p>`;
+    // const adminSubject = `Admin Notification: New Shipment Created #${shipment.trackingNumber}`;
+    // const adminBody = `<p>Shipment was created by user ${sender.name} (${sender.email}).</p>`;
+    // await sendMail(adminEmails, adminSubject, adminBody);
+    // const adminSubject = `Admin Notification: New Shipment Created #${savedShipment.trackingNumber}`;
+    // const adminBody = `<p>Shipment was created by user ${sender?.name} (${sender?.email}).</p>`;
+    // await sendMail(adminEmails, adminSubject, adminBody);
+
+    const adminSubject = `Admin Notification: New Shipment Created #${savedShipment.trackingNumber}`;
+    const adminBody = `<p>Shipment was created by user ${sender?.name} (${sender?.email}).</p>`;
     await sendMail(adminEmails, adminSubject, adminBody);
     
     res.status(201).json(savedShipment);
