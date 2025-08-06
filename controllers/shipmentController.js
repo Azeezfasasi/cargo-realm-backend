@@ -20,15 +20,60 @@ const sendClientNotification = async (shipment, subject, body) => {
 
     const emailTo = sender.email;
     const htmlBody = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="color: #0056b3;">${subject}</h2>
-        <p>Hello,</p>
-        <p>${body}</p>
-        <p><strong>Tracking Number:</strong> ${shipment.trackingNumber}</p>
-        <p><strong>Current Status:</strong> ${shipment.status}</p>
-        <p>Thank you for using our service.</p>
-        <p>The Cargo Realm Team</p>
-      </div>
+    <table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); margin: 20px auto;">
+      <tr>
+        <td style="padding: 0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="background-color: #007bff; color: #ffffff; padding: 25px 20px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                <h2 style="margin: 0; font-size: 28px; font-weight: bold;">${subject}</h2>
+            </td>
+            </tr>
+          </table>
+
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 20px 30px;">
+                <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hello ${shipment.senderName},</p>
+                <p style="margin-bottom: 15px; font-size: 16px;">${body}</p>
+
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Tracking Number:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.trackingNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Current Status:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.status}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding: 8px 0;"></td>
+                  </tr>
+                </table>
+
+                <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
+                  <a href="${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com/app/trackshipment'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                    Track Your Shipment
+                  </a>
+                </p>
+
+                <p style="margin-top: 25px; margin-bottom: 0; font-size: 16px;">Thank you for using our service.</p>
+                  <p style="margin-top: 5px; margin-bottom: 0; font-size: 16px; font-weight: bold;">The Cargo Realm Team</p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #777777;">
+                <p style="margin: 0;">This is an automated email. Please do not reply to this email.</p>
+                  <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Cargo Realm and Logistics. All rights reserved.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
     `;
 
     await sendMail(emailTo, subject, htmlBody);
@@ -69,20 +114,85 @@ const sendAdminNotification = async (shipment, subject, adminBody, reqUser = nul
     }
 
     const htmlBody = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="color: #CC0000;">Admin Alert: ${subject}</h2>
-        <p>${adminBody} ${senderDetails}.</p>
-        <p><strong>Tracking Number:</strong> ${shipment.trackingNumber}</p>
-        <p><strong>Current Status:</strong> ${shipment.status}</p>
-        <p><strong>Sender Name:</strong> ${shipment.senderName || 'N/A'}</p>
-        <p><strong>Sender Email:</strong> ${shipment.senderEmail || 'N/A'}</p>
-        <p><strong>Recipient Name:</strong> ${shipment.recipientName || 'N/A'}</p>
-        <p><strong>Receiver Email:</strong> ${shipment.receiverEmail || 'N/A'}</p>
-        <p><strong>Origin:</strong> ${shipment.origin || 'N/A'}</p>
-        <p><strong>Destination:</strong> ${shipment.destination || 'N/A'}</p>
-        ${reqUser ? `<p><strong>Action Performed By:</strong> ${reqUser.email} (Role: ${reqUser.role})</p>` : ''}
-        <p>Please log in to the admin panel for more details.</p>
-      </div>
+      <table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); margin: 20px auto;">
+        <tr>
+          <td style="padding: 0;">
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="background-color: #007bff; color: #ffffff; padding: 25px 20px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                  <h2 style="margin: 0; font-size: 28px; font-weight: bold;">Admin Alert: ${subject}</h2>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="padding: 20px 30px;">
+                  <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">${adminBody} ${senderDetails}.</p>
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Tracking Number:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.trackingNumber}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Current Status:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.status}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Sender Name:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.senderName || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Sender Email:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.senderEmail || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Receiver Name:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.recipientName || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Receiver Email:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.receiverEmail || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Origin:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.origin || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Destination:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.destination || 'N/A'}</td>
+                    </tr>
+                      ${reqUser ? `
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Action Performed By:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${reqUser.email} (Role: ${reqUser.role})</td>
+                    </tr>` : ''}
+                                
+                    <tr>
+                      <td colspan="2" style="padding: 8px 0;"></td>
+                    </tr>
+                  </table>
+
+                  <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
+                    <a href="${process.env.ADMIN_PANEL_URL || 'https://cargorealmandlogistics.com/app/dashboard'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                            Log in to Admin Panel
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #777777;">
+                  <p style="margin: 0;">This is an automated alert. Please do not reply to this email.</p>
+                  <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Cargo Realm and Logistics. All rights reserved.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+    </table>
     `;
 
     // Send email to each admin
@@ -230,12 +340,12 @@ exports.changeShipmentStatus = async (req, res) => {
     
     // --- EMAIL NOTIFICATION: STATUS CHANGED (Client) ---
     const clientSubject = `Status Update for Shipment: #${updatedShipment.trackingNumber}`;
-    const clientBody = `The status of your shipment has been changed to **${updatedShipment.status}**.`;
+    const clientBody = `The status of your shipment has been changed to <strong>${updatedShipment.status}</strong>.`;
     await sendClientNotification(updatedShipment, clientSubject, clientBody);
 
     // --- EMAIL NOTIFICATION: STATUS CHANGED (Admin) ---
     const adminSubject = `Status Changed for Shipment: #${updatedShipment.trackingNumber} to ${updatedShipment.status}`;
-    const adminBody = `The status of shipment #${updatedShipment.trackingNumber} has been updated to **${updatedShipment.status}**`;
+    const adminBody = `The status of shipment #${updatedShipment.trackingNumber} has been updated to <strong>${updatedShipment.status}</strong>`;
     await sendAdminNotification(updatedShipment, adminSubject, adminBody, req.user);
     
     res.json(updatedShipment);
@@ -310,12 +420,15 @@ exports.replyToShipment = async (req, res) => {
 
     // --- EMAIL NOTIFICATION: NEW REPLY (Client) ---
     const clientSubject = `New Reply for Shipment: #${shipment.trackingNumber}`;
-    const clientBody = `A new reply has been added to your shipment with tracking number ${shipment.trackingNumber}. The message is: "${message}".`;
+    const clientBody = `A new reply has been added to your shipment with tracking number ${shipment.trackingNumber}. 
+    <br />
+    <strong>The message is:</strong> "${message}".`;
     await sendClientNotification(shipment, clientSubject, clientBody);
 
     // --- EMAIL NOTIFICATION: NEW REPLY (Admin) ---
     const adminSubject = `New Reply on Shipment: #${shipment.trackingNumber}`;
-    const adminBody = `A new reply has been posted on shipment #${shipment.trackingNumber} by ${req.user.email}. Message: "${message}"`;
+    const adminBody = `A new reply has been posted on shipment #${shipment.trackingNumber} by ${req.user.email}. <br />
+    <strong>Message:</strong> "${message}" <br />`;
     await sendAdminNotification(shipment, adminSubject, adminBody, req.user);
 
     res.json(shipment);
