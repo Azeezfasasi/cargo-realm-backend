@@ -34,7 +34,7 @@ const sendClientNotification = async (shipment, subject, body) => {
           <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
             <tr>
               <td style="padding: 20px 30px;">
-                <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hello,</p>
+                <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hello ${shipment.senderName},</p>
                 <p style="margin-bottom: 15px; font-size: 16px;">${body}</p>
 
                 <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
@@ -52,7 +52,7 @@ const sendClientNotification = async (shipment, subject, body) => {
                 </table>
 
                 <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
-                  <a href="${process.env.CLIENT_TRACKING_URL || '#'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                  <a href="${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com/app/trackshipment'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
                     Track Your Shipment
                   </a>
                 </p>
@@ -146,7 +146,7 @@ const sendAdminNotification = async (shipment, subject, adminBody, reqUser = nul
                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.senderEmail || 'N/A'}</td>
                     </tr>
                     <tr>
-                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Recipient Name:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Receiver Name:</strong></td>
                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.recipientName || 'N/A'}</td>
                     </tr>
                     <tr>
