@@ -419,12 +419,15 @@ exports.replyToShipment = async (req, res) => {
 
     // --- EMAIL NOTIFICATION: NEW REPLY (Client) ---
     const clientSubject = `New Reply for Shipment: #${shipment.trackingNumber}`;
-    const clientBody = `A new reply has been added to your shipment with tracking number ${shipment.trackingNumber}. The message is: "${message}".`;
+    const clientBody = `A new reply has been added to your shipment with tracking number ${shipment.trackingNumber}. 
+    <br />
+    <strong>The message is:</strong> "${message}".`;
     await sendClientNotification(shipment, clientSubject, clientBody);
 
     // --- EMAIL NOTIFICATION: NEW REPLY (Admin) ---
     const adminSubject = `New Reply on Shipment: #${shipment.trackingNumber}`;
-    const adminBody = `A new reply has been posted on shipment #${shipment.trackingNumber} by ${req.user.email}. Message: "${message}"`;
+    const adminBody = `A new reply has been posted on shipment #${shipment.trackingNumber} by ${req.user.email}. <br />
+    <strong>Message:</strong> "${message}" <br />`;
     await sendAdminNotification(shipment, adminSubject, adminBody, req.user);
 
     res.json(shipment);
