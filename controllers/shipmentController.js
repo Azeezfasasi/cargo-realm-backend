@@ -339,12 +339,12 @@ exports.changeShipmentStatus = async (req, res) => {
     
     // --- EMAIL NOTIFICATION: STATUS CHANGED (Client) ---
     const clientSubject = `Status Update for Shipment: #${updatedShipment.trackingNumber}`;
-    const clientBody = `The status of your shipment has been changed to **${updatedShipment.status}**.`;
+    const clientBody = `The status of your shipment has been changed to <strong>${updatedShipment.status}</strong>.`;
     await sendClientNotification(updatedShipment, clientSubject, clientBody);
 
     // --- EMAIL NOTIFICATION: STATUS CHANGED (Admin) ---
     const adminSubject = `Status Changed for Shipment: #${updatedShipment.trackingNumber} to ${updatedShipment.status}`;
-    const adminBody = `The status of shipment #${updatedShipment.trackingNumber} has been updated to **${updatedShipment.status}**`;
+    const adminBody = `The status of shipment #${updatedShipment.trackingNumber} has been updated to <strong>${updatedShipment.status}</strong>`;
     await sendAdminNotification(updatedShipment, adminSubject, adminBody, req.user);
     
     res.json(updatedShipment);
