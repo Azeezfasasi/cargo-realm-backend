@@ -25,10 +25,6 @@ const shipmentSchema = new mongoose.Schema({
     ],
     default: 'pending',
   },
-  // items: [{
-  //   item: String,
-  //   quantity: Number,
-  // }],
   items: [String,],
   weight: Number,
   length: String,
