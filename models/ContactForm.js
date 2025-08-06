@@ -12,7 +12,7 @@ const contactFormSchema = new mongoose.Schema({
   length: { type: String },
   height: { type: String },
   status: { type: String, enum: ['new', 'read', 'replied', 'archived'], default: 'new' }, // Added 'replied' status
-  repliedBy: { // NEW: User who replied
+  repliedBy: { 
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
