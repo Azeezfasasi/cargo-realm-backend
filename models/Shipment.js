@@ -46,6 +46,7 @@ const shipmentSchema = new mongoose.Schema({
   shipmentPieces: String,
   shipmentType: [String],
   shipmentPurpose: [String],
+  trackingHistory: [trackingHistorySchema],
   replies: [replySchema],
 }, { timestamps: true });
 
