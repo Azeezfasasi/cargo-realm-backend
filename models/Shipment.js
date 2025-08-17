@@ -25,7 +25,7 @@ const shipmentSchema = new mongoose.Schema({
     ],
     default: 'pending',
   },
-  items: [String,],
+  items: [String],
   weight: Number,
   length: String,
   width: String,
@@ -35,6 +35,9 @@ const shipmentSchema = new mongoose.Schema({
   shipmentDate: Date,
   deliveryDate: Date,
   notes: String,
+  shipmentPieces: String,
+  shipmentType: [String],
+  shipmentPurpose: [String],
   replies: [replySchema],
 }, { timestamps: true });
 
