@@ -1,5 +1,12 @@
 const mongoose = require('mongoose');
 
+// Define a new schema for the tracking history entries
+const trackingHistorySchema = new mongoose.Schema({
+  status: { type: String, required: true },
+  location: { type: String, required: false }, // Optional
+  timestamp: { type: Date, default: Date.now },
+});
+
 const replySchema = new mongoose.Schema({
   message: { type: String, required: true },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // optional: who sent the reply

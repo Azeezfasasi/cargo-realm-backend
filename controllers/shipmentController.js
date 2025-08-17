@@ -252,6 +252,12 @@ exports.createShipment = async (req, res) => {
   try {
     // `authMiddleware` and `adminAuth` ensure only admins can reach this.
     const newShipment = new Shipment(req.body);
+    newShipment.trackingHistory.push({
+      status: 'pending',
+      location: newShipment.origin, // Optional
+      timestamp: new Date()
+    });
+
     const savedShipment = await newShipment.save();
     
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Client) ---
@@ -331,9 +337,23 @@ exports.changeShipmentStatus = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Only Admins, employees and Agents can change shipment status.' });
     }
     
+    // const { id } = req.params;
+    // const { status } = req.body;
+    // const updatedShipment = await Shipment.findByIdAndUpdate(id, { status }, { new: true, runValidators: true });
+
     const { id } = req.params;
-    const { status } = req.body;
-    const updatedShipment = await Shipment.findByIdAndUpdate(id, { status }, { new: true, runValidators: true });
+    const { status, location } = req.body;
+    
+    const updatedShipment = await Shipment.findByIdAndUpdate(
+      id,
+      {
+        status: status,
+        // Push a new entry to the trackingHistory array
+        $push: { trackingHistory: { status: status, location: location, timestamp: new Date() } }
+      },
+      { new: true, runValidators: true }
+    );
+
     if (!updatedShipment) {
       return res.status(404).json({ message: 'Shipment not found' });
     }
