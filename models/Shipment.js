@@ -28,7 +28,7 @@ const shipmentSchema = new mongoose.Schema({
   destination: String,
   status: {
     type: String,
-    enum: ['pending', 'in-transit', 'delivered', 'cancelled', 'processing', 'pickup-scheduled', 'out-for-delivery', 'picked-up', 'arrived-at-hub', 'departed-from-hub', 'on-hold', 'customs-clearance', 'Awaiting Pickup', 'failed-delivery-attempt', 'Awaiting Delivery', 'Arrived Carrier Connecting facility', 'Departed CARGO realm facility (Nig)', 'Arrived nearest airport', 'Shipment is Delayed', 'Delivery date not available', 'Available for pick up,check phone for instructions', 'Processed in Lagos Nigeria', 'Pending Carrier lift', 'Scheduled to depart on the next movement', 'Received from flight', 'Package is received and accepted by airline'
+    enum: ['pending', 'in-transit', 'delivered', 'cancelled', 'processing', 'pickup-scheduled', 'out-for-delivery', 'picked-up', 'arrived-at-hub', 'departed-from-hub', 'on-hold', 'customs-clearance', 'Awaiting Pickup', 'failed-delivery-attempt', 'Awaiting Delivery', 'Arrived Carrier Connecting facility', 'Departed CARGO realm facility (Nig)', 'Arrived nearest airport', 'Shipment is Delayed', 'Delivery date not available', 'Available for pick up,check phone for instructions', 'Processed in Lagos Nigeria', 'Pending Carrier lift', 'Scheduled to depart on the next movement', 'Received from flight', 'Package is received and accepted by airline', 'Customs clearance completed', 'Delivery is booked', 'Arrived at an international sorting facility and will be ready for delivery soon'
     ],
     default: 'pending',
   },
@@ -37,6 +37,7 @@ const shipmentSchema = new mongoose.Schema({
   length: String,
   width: String,
   height: String,
+  breadth: String,
   volume: Number,
   cost: Number,
   shipmentDate: Date,
