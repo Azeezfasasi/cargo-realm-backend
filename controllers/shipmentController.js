@@ -385,14 +385,14 @@ exports.createShipment = async (req, res) => {
     const savedShipment = await newShipment.save();
     
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Client) ---
-    // const clientSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
-    // const clientBody = `A new shipment has been created for you with the tracking number ${savedShipment.trackingNumber}.`;
-    // await sendClientNotification(savedShipment, clientSubject, clientBody);
+    const clientSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
+    const clientBody = `A new shipment has been created for you with the tracking number ${savedShipment.trackingNumber}.`;
+    await sendClientNotification(savedShipment, clientSubject, clientBody);
 
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Admin) ---
-    // const adminSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
-    // const adminBody = `A new shipment has been created in the system`;
-    // await sendAdminNotification(savedShipment, adminSubject, adminBody, req.user); // Pass req.user for audit trail below
+    const adminSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
+    const adminBody = `A new shipment has been created in the system`;
+    await sendAdminNotification(savedShipment, adminSubject, adminBody, req.user); // Pass req.user for audit trail below
     
     res.status(201).json(savedShipment);
   } catch (err) {
