@@ -84,6 +84,129 @@ const sendClientNotification = async (shipment, subject, body) => {
 };
 
 // Helper function to send email notifications to all admin users
+// const sendAdminNotification = async (shipment, subject, adminBody, reqUser = null) => {
+//   try {
+//     // Find all users with the 'admin' role
+//     const admins = await User.find({ role: 'admin' });
+//     // const dbAdminsAndEmployees = await User.find({ role: { $in: ['admin', 'employee'] } });
+
+//     if (!admins || admins.length === 0) {
+//       console.warn('No admin users found to send notification.');
+//       return;
+//     }
+
+//     const adminEmails = admins
+//       .map(admin => admin.email)
+//       .filter(email => email); // Filter out null/undefined emails
+
+//     if (adminEmails.length === 0) {
+//       console.warn('No valid admin email addresses found to send notification.');
+//       return;
+//     }
+
+//     // Attempt to get sender details for admin email if available
+//     let senderDetails = '';
+//     if (shipment.sender) {
+//         const sender = await User.findById(shipment.sender);
+//         if (sender) {
+//             senderDetails = `by user ${sender.fullName || sender.email}`;
+//         }
+//     }
+
+//     const htmlBody = `
+//       <table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); margin: 20px auto;">
+//         <tr>
+//           <td style="padding: 0;">
+//             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+//               <tr>
+//                 <td style="background-color: #007bff; color: #ffffff; padding: 25px 20px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+//                   <h2 style="margin: 0; font-size: 28px; font-weight: bold;">Admin Alert: ${subject}</h2>
+//                 </td>
+//               </tr>
+//             </table>
+
+//             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+//               <tr>
+//                 <td style="padding: 20px 30px;">
+//                   <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">${adminBody} ${senderDetails}.</p>
+//                   <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Tracking Number:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.trackingNumber}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Current Status:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.status}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Sender Name:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.senderName || 'N/A'}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Sender Email:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.senderEmail || 'N/A'}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Receiver Name:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.recipientName || 'N/A'}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Receiver Email:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.receiverEmail || 'N/A'}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Origin:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.origin || 'N/A'}</td>
+//                     </tr>
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Destination:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.destination || 'N/A'}</td>
+//                     </tr>
+//                       ${reqUser ? `
+//                     <tr>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Action Performed By:</strong></td>
+//                       <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${reqUser.email} (Role: ${reqUser.role})</td>
+//                     </tr>` : ''}
+                                
+//                     <tr>
+//                       <td colspan="2" style="padding: 8px 0;"></td>
+//                     </tr>
+//                   </table>
+
+//                   <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
+//                     <a href="${process.env.ADMIN_PANEL_URL || 'https://cargorealmandlogistics.com/app/dashboard'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
+//                             Log in to Admin Panel
+//                     </a>
+//                   </p>
+//                 </td>
+//               </tr>
+//             </table>
+
+//             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+//               <tr>
+//                 <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #777777;">
+//                   <p style="margin: 0;">This is an automated alert. Please do not reply to this email.</p>
+//                   <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Cargo Realm and Logistics. All rights reserved.</p>
+//                 </td>
+//               </tr>
+//             </table>
+//           </td>
+//         </tr>
+//     </table>
+//     `;
+
+//     // Send email to each admin
+//     for (const email of adminEmails) {
+//       await sendMail(email, `Admin Notification: ${subject}`, htmlBody);
+//       console.log(`Admin email sent to ${email} successfully.`);
+//     }
+
+//   } catch (error) {
+//     console.error('Failed to send admin email notification:', error);
+//   }
+// };
+
+// Helper function to send email notifications to all admin users
 const sendAdminNotification = async (shipment, subject, adminBody, reqUser = null) => {
   try {
     // Find all users with the 'admin' role
@@ -186,7 +309,7 @@ const sendAdminNotification = async (shipment, subject, adminBody, reqUser = nul
               <tr>
                 <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #777777;">
                   <p style="margin: 0;">This is an automated alert. Please do not reply to this email.</p>
-                  <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Cargo Realm and Logistics. All rights reserved.</p>
+                  <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Tofar Logistics Agency. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -195,17 +318,18 @@ const sendAdminNotification = async (shipment, subject, adminBody, reqUser = nul
     </table>
     `;
 
-    // Send email to each admin
-    for (const email of adminEmails) {
-      await sendMail(email, `Admin Notification: ${subject}`, htmlBody);
-      console.log(`Admin email sent to ${email} successfully.`);
+    // Send a single request to Brevo with all admin recipients
+    try {
+      await sendMail(adminEmails, `Admin Notification: ${subject}`, htmlBody);
+      console.log(`Admin emails sent to: ${adminEmails.join(', ')}`);
+    } catch (sendErr) {
+      console.error('Failed to send admin emails:', sendErr);
     }
 
   } catch (error) {
     console.error('Failed to send admin email notification:', error);
   }
 };
-
 
 // 1. Fetch all shipments (Admin/Agent/Employee)
 exports.getAllShipments = async (req, res) => {
