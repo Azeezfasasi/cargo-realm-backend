@@ -5,8 +5,8 @@ const User = require('../models/User'); // Ensure User model is imported
 
 // Helper function to generate unique tracking number
 const generateTrackingNumber = () => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const timestamp = Date.now().toString().slice(-5); // Last 5 digits of timestamp
+  const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0'); // 6 random digits
   return `CAR${timestamp}${random}`;
 };
 
