@@ -12,6 +12,7 @@ app.use(cors({
     'https://cargo-realm-logistics.netlify.app',
     'https://cargorealmandlogistics.com',
     'http://cargorealmandlogistics.com',
+    'https://cargo-realm-logistics.vercel.app',
     'http://localhost:5173'
   ], // Your frontend URLs
   credentials: true, // Allow cookies/auth headers to be sent
