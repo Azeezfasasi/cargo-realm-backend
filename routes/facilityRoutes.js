@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth, adminOrEmployee } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const facilityController = require('../controllers/facilityController');
 
 // Public routes - GET only
@@ -9,9 +9,9 @@ router.get('/active', facilityController.getActiveFacilities);
 router.get('/:id', facilityController.getFacilityById);
 
 // Protected routes - Admin/Employee only
-router.post('/', auth, adminOrEmployee, facilityController.createFacility);
-router.put('/:id', auth, adminOrEmployee, facilityController.updateFacility);
-router.delete('/:id', auth, adminOrEmployee, facilityController.deleteFacility);
-router.patch('/:id/toggle-status', auth, adminOrEmployee, facilityController.toggleFacilityStatus);
+router.post('/', authenticate, authorize('admin', 'employee'), facilityController.createFacility);
+router.put('/:id', authenticate, authorize('admin', 'employee'), facilityController.updateFacility);
+router.delete('/:id', authenticate, authorize('admin', 'employee'), facilityController.deleteFacility);
+router.patch('/:id/toggle-status', authenticate, authorize('admin', 'employee'), facilityController.toggleFacilityStatus);
 
 module.exports = router;

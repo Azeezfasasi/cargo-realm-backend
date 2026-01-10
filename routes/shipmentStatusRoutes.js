@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth, adminOrEmployee } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const shipmentStatusController = require('../controllers/shipmentStatusController');
 
 // Public routes - GET only
@@ -9,9 +9,9 @@ router.get('/active', shipmentStatusController.getActiveStatuses);
 router.get('/:id', shipmentStatusController.getStatusById);
 
 // Protected routes - Admin/Employee only
-router.post('/', auth, adminOrEmployee, shipmentStatusController.createStatus);
-router.put('/:id', auth, adminOrEmployee, shipmentStatusController.updateStatus);
-router.delete('/:id', auth, adminOrEmployee, shipmentStatusController.deleteStatus);
-router.patch('/:id/toggle-active', auth, adminOrEmployee, shipmentStatusController.toggleStatusActive);
+router.post('/', authenticate, authorize('admin', 'employee'), shipmentStatusController.createStatus);
+router.put('/:id', authenticate, authorize('admin', 'employee'), shipmentStatusController.updateStatus);
+router.delete('/:id', authenticate, authorize('admin', 'employee'), shipmentStatusController.deleteStatus);
+router.patch('/:id/toggle-active', authenticate, authorize('admin', 'employee'), shipmentStatusController.toggleStatusActive);
 
 module.exports = router;
