@@ -4,8 +4,31 @@ const User = require('../models/User'); // Ensure User model is imported
 
 exports.submitContactForm = async (req, res) => {
   try {
-    const { name, email, phoneNumber, message } = req.body;
-    const contact = new ContactForm({ name, email, phoneNumber, message });
+    const { 
+      name, 
+      email, 
+      phoneNumber, 
+      message,
+      shippingType,
+      originCountry,
+      destinationCountry,
+      weight,
+      length,
+      height
+    } = req.body;
+    
+    const contact = new ContactForm({ 
+      name, 
+      email, 
+      phoneNumber, 
+      message,
+      shippingType: shippingType || undefined,
+      originCountry: originCountry || undefined,
+      destinationCountry: destinationCountry || undefined,
+      weight: weight || undefined,
+      length: length || undefined,
+      height: height || undefined
+    });
     await contact.save();
 
     // 1. Email to user (sender)
@@ -93,6 +116,36 @@ exports.submitContactForm = async (req, res) => {
                         <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Contact ID:</strong></td>
                         <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${contact._id}</td>
                       </tr>
+                      ${shippingType ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Shipping Type:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shippingType}</td>
+                      </tr>` : ''}
+                      ${originCountry ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Origin Country:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${originCountry}</td>
+                      </tr>` : ''}
+                      ${destinationCountry ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Destination Country:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${destinationCountry}</td>
+                      </tr>` : ''}
+                      ${weight ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Weight (kg):</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${weight}</td>
+                      </tr>` : ''}
+                      ${length ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Length (cm):</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${length}</td>
+                      </tr>` : ''}
+                      ${height ? `
+                      <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Height (cm):</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${height}</td>
+                      </tr>` : ''}
                       <tr>
                         <td colspan="2" style="padding: 8px 0;"></td>
                       </tr>
