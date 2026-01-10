@@ -13,7 +13,6 @@ const shipmentStatusSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    uppercase: true,
     trim: true
   },
   description: {
