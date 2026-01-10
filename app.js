@@ -35,6 +35,7 @@ app.use('/api/blogs', require('./routes/blogRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/appointments', require('./routes/appointmentRoutes'));
 app.use('/api/shipments', require('./routes/shipmentRoutes'));
+app.use('/api/messageslides', require('./routes/meesageslidesRoutes'));
 
 app.get('/', (req, res) => {
   res.send('Welcome to Cargo Realm and Logistics!');
