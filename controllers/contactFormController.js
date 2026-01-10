@@ -1,9 +1,22 @@
 const ContactForm = require('../models/ContactForm');
+const Shipment = require('../models/Shipment');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User'); // Ensure User model is imported
 
+// Helper function to generate unique tracking number
+const generateTrackingNumber = () => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `CAR${timestamp}${random}`;
+};
+
 exports.submitContactForm = async (req, res) => {
   try {
+    console.log('📨 CONTACT FORM SUBMISSION RECEIVED:', {
+      timestamp: new Date().toISOString(),
+      body: req.body
+    });
+    
     const { 
       name, 
       email, 
@@ -30,6 +43,49 @@ exports.submitContactForm = async (req, res) => {
       height: height || undefined
     });
     await contact.save();
+    
+    console.log('✅ CONTACT FORM SAVED TO DATABASE:', {
+      id: contact._id,
+      email: contact.email,
+      name: contact.name,
+      createdAt: contact.createdAt
+    });
+
+    // Create a corresponding Shipment record
+    const trackingNumber = generateTrackingNumber();
+    const shipment = new Shipment({
+      trackingNumber,
+      senderName: name,
+      senderEmail: email,
+      senderPhone: phoneNumber,
+      recipientName: 'TBD', // To be determined after quote approval
+      receiverEmail: email,
+      origin: originCountry || 'Not specified',
+      destination: destinationCountry || 'Not specified',
+      status: 'pending', // Quote pending status
+      items: message ? [message] : ['Shipment items to be determined'],
+      weight: weight ? parseFloat(weight) : undefined,
+      length: length || undefined,
+      height: height || undefined,
+      shipmentType: shippingType || 'Standard',
+      shipmentPurpose: 'Quote Request',
+      shipmentDate: new Date(),
+      notes: `Quote request from ${name}. ${message ? 'Details: ' + message : ''}`,
+      // Initialize tracking history with the initial state
+      trackingHistory: [{
+        status: 'pending',
+        location: originCountry || 'Quote received',
+        timestamp: new Date()
+      }]
+    });
+    await shipment.save();
+
+    console.log('✅ SHIPMENT CREATED FROM CONTACT FORM:', {
+      id: shipment._id,
+      trackingNumber: shipment.trackingNumber,
+      status: shipment.status,
+      createdAt: shipment.createdAt
+    });
 
     // 1. Email to user (sender)
     const clientEmailContent = `
@@ -101,6 +157,10 @@ exports.submitContactForm = async (req, res) => {
 
                     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
                       <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Tracking Number:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;"><strong style="color: #007bff;">${trackingNumber}</strong></td>
+                      </tr>
+                      <tr>
                         <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Sender Name:</strong></td>
                         <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${name}</td>
                       </tr>
@@ -156,9 +216,13 @@ exports.submitContactForm = async (req, res) => {
                         <p>${message}</p>
                       </blockquote>
 
+                    <p style="margin-top: 25px; margin-bottom: 15px; font-size: 14px; background-color: #e3f2fd; padding: 10px; border-radius: 4px;">
+                      <strong style="color: #1976d2;">🚚 Shipment Created:</strong> This quote request has been automatically created as a pending shipment. Tracking number: <strong>${trackingNumber}</strong>
+                    </p>
+
                     <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
                       <a href="${process.env.ADMIN_PANEL_URL || 'https://cargorealmandlogistics.com/app/account/contactformresponses'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
-                        Log in to Admin Panel
+                        View in Dashboard
                       </a>
                     </p>
                   </td>
@@ -184,10 +248,27 @@ exports.submitContactForm = async (req, res) => {
       console.warn('No admin users found to send new quote request notification.');
     }
 
-    res.status(201).json(contact);
+    console.log('📤 SENDING RESPONSE:', { contactId: contact._id, shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, status: 201 });
+    res.status(201).json({
+      success: true,
+      message: 'Quote request received and shipment created successfully!',
+      contact,
+      shipment: {
+        id: shipment._id,
+        trackingNumber: shipment.trackingNumber,
+        status: shipment.status
+      }
+    });
   } catch (err) {
-    console.error('Error submitting contact form:', err);
-    res.status(500).json({ message: err.message });
+    console.error('❌ ERROR SUBMITTING CONTACT FORM:', {
+      message: err.message,
+      stack: err.stack,
+      body: req.body
+    });
+    res.status(500).json({ 
+      success: false,
+      message: err.message 
+    });
   }
 };
 
