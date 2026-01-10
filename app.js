@@ -11,14 +11,16 @@ app.use(cors({
   origin: [
     'https://cargo-realm-logistics.netlify.app',
     'https://cargorealmandlogistics.com',
+    'https://www.cargorealmandlogistics.com',
     'http://cargorealmandlogistics.com',
+    'http://www.cargorealmandlogistics.com',
     'https://cargo-realm-logistics.vercel.app',
     'http://localhost:5173'
   ], // Your frontend URLs
   credentials: true, // Allow cookies/auth headers to be sent
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH'], // Explicitly allowed methods
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // Explicitly allowed methods
   allowedHeaders: ['Content-Type', 'Authorization'], // Explicitly allowed headers
-  optionsSuccessStatus: 204, // Status for preflight requests
+  optionsSuccessStatus: 200, // Status for preflight requests
 }));
 
 // Fix for large base64 uploads
