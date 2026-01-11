@@ -24,14 +24,16 @@ const upload = multer({
 
 // Public routes
 router.get('/', heroController.getAllHeroSlides);
-router.get('/:id', heroController.getHeroSlideById);
 
-// Protected routes (require authentication)
+// Protected routes - specific routes first (before :id parameter routes)
 router.get('/admin/all', authenticate, authorize('admin', 'employee'), heroController.getAllHeroSlidesForAdmin);
+router.patch('/reorder', authenticate, authorize('admin', 'employee'), heroController.reorderSlides);
+
+// Protected routes - generic :id routes last
+router.get('/:id', heroController.getHeroSlideById);
 router.post('/', authenticate, authorize('admin', 'employee'), upload, heroController.createHeroSlide);
 router.put('/:id', authenticate, authorize('admin', 'employee'), upload, heroController.updateHeroSlide);
 router.delete('/:id', authenticate, authorize('admin', 'employee'), heroController.deleteHeroSlide);
 router.patch('/:id/toggle', authenticate, authorize('admin', 'employee'), heroController.toggleHeroSlideStatus);
-router.patch('/reorder', authenticate, authorize('admin', 'employee'), heroController.reorderSlides);
 
 module.exports = router;

@@ -91,11 +91,15 @@ exports.updateHeroSlide = async (req, res) => {
 
     // If a new image file is provided, upload to Cloudinary
     if (req.file) {
-      const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
-        folder: 'cargo_realm/hero_slides',
-        public_id: `hero_${Date.now()}`
-      });
-      slide.image = result.secure_url;
+      try {
+        const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
+          folder: 'cargo_realm/hero_slides',
+          public_id: `hero_${Date.now()}`
+        });
+        slide.image = result.secure_url;
+      } catch (cloudinaryErr) {
+        return res.status(500).json({ message: `Image upload failed: ${cloudinaryErr.message}` });
+      }
     }
 
     await slide.save();
