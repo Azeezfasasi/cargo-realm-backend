@@ -42,6 +42,7 @@ app.use('/api/messageslides', require('./routes/meesageslidesRoutes'));
 app.use('/api/facilities', require('./routes/facilityRoutes'));
 app.use('/api/shipment-statuses', require('./routes/shipmentStatusRoutes'));
 app.use('/api/hero', require('./routes/heroRoutes'));
+app.use('/api/services', require('./routes/servicesRoutes'));
 app.use('/api/messageslides', require('./routes/meesageslidesRoutes'));
 
 app.get('/', (req, res) => {
