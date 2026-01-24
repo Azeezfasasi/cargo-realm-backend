@@ -24,6 +24,9 @@ router.delete('/:id', authenticate, authorize('admin'), shipmentController.delet
 // Change shipment status (Admin/Agent only) PATCH - /api/shipments/:id/status
 router.patch('/:id/status', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.changeShipmentStatus);
 
+// Generate QR codes for all shipments missing them (Admin only) POST - /api/shipments/generate-qr-codes
+router.post('/generate-qr-codes', authenticate, authorize('admin'), shipmentController.generateMissingQRCodes);
+
 // Reply to a shipment (Authenticated users) POST - /api/shipments/:id/reply
 router.post('/:id/reply', authenticate, shipmentController.replyToShipment);
 

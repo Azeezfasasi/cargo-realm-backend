@@ -1,7 +1,32 @@
 const Shipment = require('../models/Shipment');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
-const QRCode = require('qrcode'); 
+const QRCode = require('qrcode');
+
+// Helper function to generate and save QR code for a shipment
+const generateQRCodeForShipment = async (shipment) => {
+  try {
+    if (!shipment.trackingNumber) {
+      console.error('Shipment has no tracking number. Cannot generate QR code.');
+      return false;
+    }
+
+    // Don't regenerate if already exists
+    if (shipment.qrCodeUrl) {
+      return true;
+    }
+
+    const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${shipment.trackingNumber}`;
+    const qrCodeUrl = await QRCode.toDataURL(trackingUrl);
+    shipment.qrCodeUrl = qrCodeUrl;
+    await shipment.save();
+    console.log(`QR code generated for shipment: ${shipment.trackingNumber}`);
+    return true;
+  } catch (error) {
+    console.error('Error generating QR code:', error);
+    return false;
+  }
+};
 
 // Helper function to send email notifications to the shipment sender (client)
 const sendClientNotification = async (shipment, subject, body) => {
@@ -216,6 +241,16 @@ exports.getAllShipments = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Only Admins, Agents, and Employees can view all shipments.' });
     }
     const shipments = await Shipment.find().populate('sender', 'email');
+    
+    // Auto-generate missing QR codes (non-blocking)
+    shipments.forEach(shipment => {
+      if (!shipment.qrCodeUrl) {
+        generateQRCodeForShipment(shipment).catch(err => 
+          console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
+        );
+      }
+    });
+    
     res.json(shipments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -227,6 +262,16 @@ exports.getMyShipments = async (req, res) => {
   try {
     // Find shipments where the authenticated user is the sender
     const shipments = await Shipment.find({ sender: req.user.id }).populate('sender', 'email');
+    
+    // Auto-generate missing QR codes (non-blocking)
+    shipments.forEach(shipment => {
+      if (!shipment.qrCodeUrl) {
+        generateQRCodeForShipment(shipment).catch(err => 
+          console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
+        );
+      }
+    });
+    
     res.json(shipments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -241,6 +286,14 @@ exports.trackShipment = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({ message: 'Shipment not found' });
     }
+    
+    // Auto-generate QR code if missing (non-blocking)
+    if (!shipment.qrCodeUrl) {
+      generateQRCodeForShipment(shipment).catch(err => 
+        console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
+      );
+    }
+    
     res.json(shipment);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -466,6 +519,55 @@ exports.replyToShipment = async (req, res) => {
     res.json(shipment);
   } catch (err) {
     console.error('Reply error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 12. Batch generate QR codes for all shipments (Admin only)
+exports.generateMissingQRCodes = async (req, res) => {
+  try {
+    // Only admins can trigger batch QR code generation
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can generate QR codes.' });
+    }
+
+    const shipments = await Shipment.find({ qrCodeUrl: null }); // Find shipments without QR codes
+    
+    if (shipments.length === 0) {
+      return res.json({ 
+        message: 'All shipments already have QR codes!', 
+        generatedCount: 0,
+        totalChecked: 0
+      });
+    }
+
+    let generatedCount = 0;
+    const errors = [];
+
+    // Generate QR codes for all shipments without them
+    for (const shipment of shipments) {
+      try {
+        const success = await generateQRCodeForShipment(shipment);
+        if (success) {
+          generatedCount++;
+        }
+      } catch (error) {
+        errors.push({
+          trackingNumber: shipment.trackingNumber,
+          error: error.message
+        });
+      }
+    }
+
+    res.json({
+      message: `QR code generation completed. ${generatedCount} out of ${shipments.length} shipments processed.`,
+      generatedCount,
+      totalChecked: shipments.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (err) {
+    console.error('Batch QR generation error:', err);
     res.status(500).json({ message: err.message });
   }
 };
