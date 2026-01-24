@@ -1,6 +1,7 @@
 const Shipment = require('../models/Shipment');
 const sendMail = require('../utils/mailer');
-const User = require('../models/User'); 
+const User = require('../models/User');
+const QRCode = require('qrcode'); 
 
 // Helper function to send email notifications to the shipment sender (client)
 const sendClientNotification = async (shipment, subject, body) => {
@@ -258,6 +259,18 @@ exports.createShipment = async (req, res) => {
     });
 
     const savedShipment = await newShipment.save();
+    
+    // --- GENERATE QR CODE ---
+    try {
+      const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${savedShipment.trackingNumber}`;
+      const qrCodeUrl = await QRCode.toDataURL(trackingUrl);
+      savedShipment.qrCodeUrl = qrCodeUrl;
+      await savedShipment.save();
+      console.log(`QR code generated for shipment: ${savedShipment.trackingNumber}`);
+    } catch (qrError) {
+      console.error('Error generating QR code:', qrError);
+      // Continue without QR code if generation fails
+    }
     
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Client) ---
     const clientSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;

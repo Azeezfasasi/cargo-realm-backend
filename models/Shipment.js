@@ -47,6 +47,7 @@ const shipmentSchema = new mongoose.Schema({
   shipmentFacility: String,
   trackingHistory: [trackingHistorySchema],
   replies: [replySchema],
+  qrCodeUrl: { type: String, default: null }, // Stores the QR code URL
 }, { timestamps: true });
 
 module.exports = mongoose.model('Shipment', shipmentSchema);
