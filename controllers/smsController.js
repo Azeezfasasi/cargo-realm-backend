@@ -76,7 +76,13 @@ exports.sendTestSMS = async (req, res) => {
     if (result.success) {
       res.json({ message: 'Test SMS sent successfully', result });
     } else {
-      res.status(400).json({ message: 'Failed to send test SMS', result });
+      console.error('[SMS Controller] Test SMS failed with error:', result.details);
+      res.status(400).json({ 
+        message: 'Failed to send test SMS', 
+        error: result.error,
+        details: result.details,
+        hint: 'Check your BulkSMS API credentials and base URL in the environment variables.'
+      });
     }
   } catch (err) {
     console.error('Error sending test SMS:', err.message);
@@ -97,7 +103,13 @@ exports.checkSMSBalance = async (req, res) => {
         data: result.data,
       });
     } else {
-      res.status(400).json({ message: 'Failed to retrieve balance', error: result.error });
+      console.error('[SMS Controller] Balance check failed with error:', result.details);
+      res.status(400).json({ 
+        message: 'Failed to retrieve balance', 
+        error: result.error,
+        details: result.details,
+        hint: 'Check your BulkSMS API credentials and base URL in the environment variables.'
+      });
     }
   } catch (err) {
     console.error('Error checking SMS balance:', err.message);
@@ -147,8 +159,18 @@ exports.getSMSStatistics = async (req, res) => {
     const filter = {};
     if (startDate || endDate) {
       filter.sentAt = {};
-      if (startDate) filter.sentAt.$gte = new Date(startDate);
-      if (endDate) filter.sentAt.$lte = new Date(endDate);
+      if (startDate) {
+        // Start from beginning of the day
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        filter.sentAt.$gte = start;
+      }
+      if (endDate) {
+        // End at end of the day
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.sentAt.$lte = end;
+      }
     }
 
     const total = await SMSLog.countDocuments(filter);

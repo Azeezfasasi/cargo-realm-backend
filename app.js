@@ -28,6 +28,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Register all routes after app is initialized
+app.use('/api/test', require('./routes/testRoutes'));
 app.use('/api/newsletter', require('./routes/newsletterRoutes'));
 app.use('/api/donations', require('./routes/donationRoutes'));
 app.use('/api/events', require('./routes/eventRoutes'));

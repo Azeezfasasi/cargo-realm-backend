@@ -22,7 +22,10 @@ const connectDB = async () => {
     if (err.message.includes('authentication failed')) {
       console.error('  → Check MONGO_URI credentials in .env');
     }
-    process.exit(1);
+    console.warn('⚠ Warning: MongoDB connection failed. Server will continue running but database operations will fail.');
+    console.warn('⚠ Some API endpoints may not work properly without MongoDB.');
+    // Don't exit - allow server to continue running for testing
+    // process.exit(1);
   }
 };
 
