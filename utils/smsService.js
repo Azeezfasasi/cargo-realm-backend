@@ -86,10 +86,17 @@ const sendSMS = async (phoneNumber, message) => {
     console.log(`[SMS Service] Auth Method: ${BULKSMS_AUTH_METHOD}`);
     console.log(`[SMS Service] Request Payload:`, payload);
     
+    // Create abort controller with 8 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
     const response = await axios.post(smsURL, payload, {
       headers,
-      timeout: 10000, // 10 second timeout
+      timeout: 8000,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     console.log(`[SMS Service] SMS sent successfully to ${phoneNumber}`, {
       messageId: response.data?.data?.message_id,
@@ -105,6 +112,7 @@ const sendSMS = async (phoneNumber, message) => {
     };
   } catch (error) {
     const smsURL = getFullURL('/sms');
+    const isAbortError = error.code === 'ECONNABORTED';
     const errorDetails = {
       message: error.message,
       status: error.response?.status,
@@ -114,6 +122,7 @@ const sendSMS = async (phoneNumber, message) => {
       requestURL: smsURL,
       authMethod: BULKSMS_AUTH_METHOD,
       requestPayload: payload,
+      isTimeout: isAbortError,
     };
     
     console.error('[SMS Service] Error sending SMS:', {
@@ -123,7 +132,7 @@ const sendSMS = async (phoneNumber, message) => {
 
     return {
       success: false,
-      error: error.message,
+      error: isAbortError ? 'Request timeout - BulkSMS API took too long to respond' : error.message,
       details: errorDetails,
       status: error.response?.status,
     };
@@ -163,12 +172,26 @@ const sendBulkSMS = async (phoneNumbers, message) => {
   }
 };
 
+// Cache for balance checks to avoid hammering the API
+let balanceCache = {
+  data: null,
+  timestamp: 0,
+  cacheDuration: 60 * 1000, // Cache for 60 seconds
+};
+
 /**
- * Check account balance
+ * Check account balance with caching
  * @returns {Promise<object>} - Account balance information
  */
 const checkBalance = async () => {
   try {
+    // Check if cache is still valid (within 60 seconds)
+    const now = Date.now();
+    if (balanceCache.data && (now - balanceCache.timestamp) < balanceCache.cacheDuration) {
+      console.log('[SMS Service] Returning cached balance (age: ' + (now - balanceCache.timestamp) + 'ms)');
+      return balanceCache.data;
+    }
+
     if (!BULKSMS_TOKEN) {
       throw new Error('BulkSMS API token is not configured. Please set BULKSMS_TOKEN in environment variables.');
     }
@@ -180,21 +203,38 @@ const checkBalance = async () => {
     console.log('[SMS Service] URL:', balanceURL);
     console.log('[SMS Service] Auth Method:', BULKSMS_AUTH_METHOD);
     
+    // Create abort controller with 8 second timeout (BulkSMS API should respond in <5 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
     const response = await axios.get(balanceURL, {
       headers,
-      timeout: 10000,
+      timeout: 8000,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     console.log('[SMS Service] Balance check successful:', response.data);
 
-    return {
+    const result = {
       success: true,
       balance: response.data?.balance,
       currency: 'NGN',
       data: response.data?.data,
     };
+
+    // Cache the successful response
+    balanceCache = {
+      data: result,
+      timestamp: now,
+      cacheDuration: 60 * 1000,
+    };
+
+    return result;
   } catch (error) {
     const balanceURL = getFullURL('/balance');
+    const isAbortError = error.code === 'ECONNABORTED';
     const errorDetails = {
       message: error.message,
       status: error.response?.status,
@@ -203,9 +243,20 @@ const checkBalance = async () => {
       code: error.code,
       requestURL: balanceURL,
       authMethod: BULKSMS_AUTH_METHOD,
+      isTimeout: isAbortError,
     };
     
     console.error('[SMS Service] Balance check failed:', errorDetails);
+    
+    // If we have cached data, return it as fallback on error
+    if (balanceCache.data) {
+      console.warn('[SMS Service] Returning stale cached balance due to API error');
+      return {
+        ...balanceCache.data,
+        cached: true,
+        cacheAge: Date.now() - balanceCache.timestamp,
+      };
+    }
     
     return {
       success: false,
@@ -227,11 +278,17 @@ const getTransactions = async () => {
     console.log('[SMS Service] Fetching transactions...');
     console.log('[SMS Service] URL:', transactionsURL);
     
+    // Create abort controller with 8 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
     const response = await axios.get(transactionsURL, {
       headers,
-      timeout: 10000,
+      timeout: 8000,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
     console.log('[SMS Service] Transactions fetched successfully');
 
     return {
@@ -240,10 +297,14 @@ const getTransactions = async () => {
       data: response.data,
     };
   } catch (error) {
-    console.error('[SMS Service] Transactions fetch failed:', error.message);
+    const isAbortError = error.code === 'ECONNABORTED';
+    console.error('[SMS Service] Transactions fetch failed:', {
+      message: error.message,
+      isTimeout: isAbortError,
+    });
     return {
       success: false,
-      error: error.message,
+      error: isAbortError ? 'Request timeout fetching transactions' : error.message,
     };
   }
 };
