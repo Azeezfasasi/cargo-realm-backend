@@ -30,22 +30,27 @@ const generateQRCodeForShipment = async (shipment) => {
 };
 
 // Helper function to send email notifications to the shipment sender (client)
-const sendClientNotification = async (shipment, subject, body) => {
+const sendClientNotification = async (shipment, subject, body, externalEmail = null) => {
   try {
-    if (!shipment.sender) {
-      console.error('Shipment has no sender. Skipping client email notification.');
+    let emailTo = null;
+    
+    // Determine email address: use external email if provided, otherwise fetch from linked user
+    if (externalEmail) {
+      emailTo = externalEmail;
+    } else if (shipment.sender) {
+      const sender = await User.findById(shipment.sender);
+      if (!sender || !sender.email) {
+        console.error('Sender not found or email is missing. Skipping client email notification.');
+        return;
+      }
+      emailTo = sender.email;
+    } else if (shipment.senderEmail) {
+      emailTo = shipment.senderEmail;
+    } else {
+      console.error('No email found for shipment. Skipping client email notification.');
       return;
     }
 
-    // Fetch the sender's email address using the User model
-    // Populate sender to get the email if it's not already populated
-    const sender = await User.findById(shipment.sender);
-    if (!sender || !sender.email) {
-      console.error('Sender not found or email is missing. Skipping client email notification.');
-      return;
-    }
-
-    const emailTo = sender.email;
     const htmlBody = `
     <table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); margin: 20px auto;">
       <tr>
@@ -107,6 +112,87 @@ const sendClientNotification = async (shipment, subject, body) => {
     console.log(`Client email sent to ${emailTo} successfully.`);
   } catch (error) {
     console.error('Failed to send client email notification:', error);
+  }
+};
+
+// Helper function to send confirmation email to external senders (non-registered emails)
+const sendExternalSenderConfirmation = async (shipment, email) => {
+  try {
+    if (!email) {
+      console.error('No email provided for external sender confirmation.');
+      return;
+    }
+
+    const subject = `Shipment Created: #${shipment.trackingNumber}`;
+    const htmlBody = `
+    <table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); margin: 20px auto;">
+      <tr>
+        <td style="padding: 0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="background-color: #007bff; color: #ffffff; padding: 25px 20px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px;">
+                <h2 style="margin: 0; font-size: 28px; font-weight: bold;">${subject}</h2>
+            </td>
+            </tr>
+          </table>
+
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 20px 30px;">
+                <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hello ${shipment.senderName},</p>
+                <p style="margin-bottom: 15px; font-size: 16px;">A new shipment has been created under your email address. You can track your shipment using the tracking number below.</p>
+
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 20px; border-collapse: collapse; font-size: 15px;">
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Tracking Number:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.trackingNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Current Status:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.status}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Origin:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.origin || 'N/A'}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 40%; vertical-align: top;"><strong style="color: #555555;">Destination:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eeeeee; width: 60%; vertical-align: top;">${shipment.destination || 'N/A'}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding: 8px 0;"></td>
+                  </tr>
+                </table>
+
+                <p style="margin-top: 25px; margin-bottom: 0; text-align: center;">
+                  <a href="${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com/app/trackshipment'}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                    Track Your Shipment
+                  </a>
+                </p>
+
+                <p style="margin-top: 25px; margin-bottom: 0; font-size: 16px;">Thank you for using our service.</p>
+                  <p style="margin-top: 5px; margin-bottom: 0; font-size: 16px; font-weight: bold;">The Cargo Realm Team</p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 20px 30px; text-align: center; font-size: 12px; color: #777777;">
+                <p style="margin: 0;">This is an automated email. Please do not reply to this email.</p>
+                  <p style="margin: 5px 0 0;">&copy; ${new Date().getFullYear()} Cargo Realm and Logistics. All rights reserved.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    `;
+
+    await sendMail(email, subject, htmlBody);
+    console.log(`External sender confirmation email sent to ${email} successfully.`);
+  } catch (error) {
+    console.error('Failed to send external sender confirmation email:', error);
   }
 };
 
@@ -304,11 +390,37 @@ exports.trackShipment = async (req, res) => {
 // 4. Create a new shipment (Admin only)
 exports.createShipment = async (req, res) => {
   try {
-    // `authMiddleware` and `adminAuth` ensure only admins can reach this.
-    const newShipment = new Shipment(req.body);
+    const { senderEmail, sender, ...shipmentData } = req.body;
+
+    // Handle email-based sender assignment
+    let finalSenderId = sender;
+    let isExternalEmail = false;
+
+    if (senderEmail) {
+      // Lookup user by email if provided
+      const existingUser = await User.findOne({ email: senderEmail.toLowerCase() });
+      
+      if (existingUser) {
+        // Link to existing user
+        finalSenderId = existingUser._id;
+        console.log(`Shipment sender linked to existing user: ${existingUser.email}`);
+      } else {
+        // Mark as external email for confirmation later
+        isExternalEmail = true;
+        console.log(`External sender email: ${senderEmail}`);
+      }
+    }
+
+    // Create shipment with final sender ID
+    const newShipment = new Shipment({
+      ...shipmentData,
+      sender: finalSenderId || null,
+      senderEmail: senderEmail || shipmentData.senderEmail
+    });
+
     newShipment.trackingHistory.push({
       status: 'pending',
-      location: newShipment.origin, // Optional
+      location: newShipment.origin,
       timestamp: new Date()
     });
 
@@ -323,18 +435,24 @@ exports.createShipment = async (req, res) => {
       console.log(`QR code generated for shipment: ${savedShipment.trackingNumber}`);
     } catch (qrError) {
       console.error('Error generating QR code:', qrError);
-      // Continue without QR code if generation fails
     }
     
-    // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Client) ---
-    const clientSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
-    const clientBody = `A new shipment has been created for you with the tracking number ${savedShipment.trackingNumber}.`;
-    await sendClientNotification(savedShipment, clientSubject, clientBody);
+    // --- EMAIL NOTIFICATION: SHIPMENT CREATED ---
+    if (finalSenderId) {
+      // Send to registered user
+      const clientSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
+      const clientBody = `A new shipment has been created for you with the tracking number ${savedShipment.trackingNumber}.`;
+      await sendClientNotification(savedShipment, clientSubject, clientBody);
+    } else if (isExternalEmail && senderEmail) {
+      // Send confirmation to external email
+      console.log(`Sending external sender confirmation to: ${senderEmail}`);
+      await sendExternalSenderConfirmation(savedShipment, senderEmail);
+    }
 
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED (Admin) ---
     const adminSubject = `New Shipment Created: #${savedShipment.trackingNumber}`;
     const adminBody = `A new shipment has been created in the system`;
-    await sendAdminNotification(savedShipment, adminSubject, adminBody, req.user); // Pass req.user for audit trail below
+    await sendAdminNotification(savedShipment, adminSubject, adminBody, req.user);
     
     // --- SMS NOTIFICATION: SHIPMENT CREATED ---
     try {
@@ -342,12 +460,11 @@ exports.createShipment = async (req, res) => {
       console.log('[Shipment Creation] SMS notifications sent:', smsResults);
     } catch (smsError) {
       console.error('[Shipment Creation] Error sending SMS:', smsError.message);
-      // Continue even if SMS fails - don't block shipment creation
     }
     
     res.status(201).json(savedShipment);
   } catch (err) {
-    console.error('Error creating shipment:', err); // Added detailed logging
+    console.error('Error creating shipment:', err);
     res.status(400).json({ message: err.message });
   }
 };
