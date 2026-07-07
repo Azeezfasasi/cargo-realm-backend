@@ -5,13 +5,13 @@
 
 const smsTemplates = {
   // Shipment Created - Sender Notification
-  SHIPMENT_CREATED_SENDER: (trackingNumber, recipientName, origin, destination) => {
-    return `Dear Sender, your shipment ${trackingNumber} to ${recipientName} has been created. From: ${origin} To: ${destination}. Track: cargorealmandlogistics.com`;
+  SHIPMENT_CREATED_SENDER: (trackingNumber, senderName, recipientName, origin, destination) => {
+    return `Dear ${senderName}, your shipment ${trackingNumber} to ${recipientName} has been created. From: ${origin} To: ${destination}. Track: cargorealmandlogistics.com`;
   },
 
   // Shipment Created - Recipient Notification
-  SHIPMENT_CREATED_RECIPIENT: (trackingNumber, senderName, origin, destination) => {
-    return `Dear Recipient, you have an incoming shipment ${trackingNumber} from ${senderName}. From: ${origin} To: ${destination}. Track: cargorealmandlogistics.com`;
+  SHIPMENT_CREATED_RECIPIENT: (trackingNumber, recipientName, senderName, origin, destination) => {
+    return `Dear ${recipientName}, you have an incoming shipment ${trackingNumber} from ${senderName}. From: ${origin} To: ${destination}. Track: cargorealmandlogistics.com`;
   },
 
   // Shipment Status Updated
