@@ -7,6 +7,9 @@ const rateLimit = require('../middleware/rateLimit');
 // Get all shipments (Admin/Agent only) GET - /api/shipments
 router.get('/', authenticate, authorize('admin', 'agent', 'employee'), shipmentController.getAllShipments);
 
+// Summary counts for the shipments dashboard (Admin/Agent/Employee) GET - /api/shipments/stats
+router.get('/stats', authenticate, authorize('admin', 'agent', 'employee'), shipmentController.getShipmentStats);
+
 // Get my shipments (Authenticated users, filtered by sender) GET - /api/shipments/my-shipments
 router.get('/my-shipments', authenticate, shipmentController.getMyShipments);
 

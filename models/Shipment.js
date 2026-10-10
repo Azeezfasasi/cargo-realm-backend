@@ -87,6 +87,11 @@ const shipmentSchema = new mongoose.Schema({
   qrCodeUrl: { type: String, default: null }, // Stores the QR code URL
 }, { timestamps: true });
 
+// Indexes for the paginated shipments list (newest first, filtered by status/facility)
+shipmentSchema.index({ createdAt: -1 });
+shipmentSchema.index({ status: 1, createdAt: -1 });
+shipmentSchema.index({ shipmentFacility: 1, createdAt: -1 });
+
 // Recompute amountPaid/paymentStatus from the payments list and the shipment cost
 shipmentSchema.methods.recalculatePayments = function () {
   const paid = (this.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);

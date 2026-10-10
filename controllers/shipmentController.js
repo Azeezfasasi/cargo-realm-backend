@@ -347,8 +347,27 @@ exports.getAllShipments = async (req, res) => {
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied. Only Admins, Agents, and Employees can view all shipments.' });
     }
-    const shipments = await Shipment.find().populate('sender', 'email');
-    
+    // Paginated mode when ?page= is given; otherwise the full list (dashboard widgets use it)
+    const paginated = req.query.page !== undefined;
+    let shipments;
+    let pageInfo;
+    if (paginated) {
+      const filter = await buildShipmentListFilter(req.query);
+      const exportAll = req.query.limit === 'all';
+      const limit = exportAll ? 5000 : Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+      const total = await Shipment.countDocuments(filter);
+      const pages = Math.max(1, Math.ceil(total / limit));
+      const page = exportAll ? 1 : Math.min(pages, Math.max(1, parseInt(req.query.page, 10) || 1));
+      shipments = await Shipment.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('sender', 'email');
+      pageInfo = { total, page, pages, limit };
+    } else {
+      shipments = await Shipment.find().populate('sender', 'email');
+    }
+
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
@@ -357,8 +376,74 @@ exports.getAllShipments = async (req, res) => {
         ));
       }
     });
-    
-    res.json(shipments);
+
+    res.json(paginated ? { items: shipments, ...pageInfo } : shipments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// --- Shipment list filters & stats (staff) -----------------------------------------
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const STALE_DAYS = 14;
+const DELIVERED_RE = /^\s*delivered\s*$/i;
+
+// Statuses may be stored by code ("in-transit") or name ("In Transit"); match all variants
+const statusVariantsRegex = async (status) => {
+  const wanted = String(status).trim();
+  const lower = wanted.toLowerCase();
+  const configured = await ShipmentStatus.find().select('name code').lean();
+  const match = configured.find((s) => [s.code, s.name].some((v) => v && v.trim().toLowerCase() === lower));
+  const variants = new Set([wanted, ...(match ? [match.code, match.name] : [])].filter(Boolean).map((v) => escapeRegex(v.trim())));
+  return new RegExp(`^\\s*(${[...variants].join('|')})\\s*$`, 'i');
+};
+
+// view=open|delivered|all, search, status, facility, stale=1
+const buildShipmentListFilter = async (q) => {
+  const and = [];
+  if (q.view === 'open') and.push({ status: { $not: DELIVERED_RE } });
+  if (q.view === 'delivered') and.push({ status: DELIVERED_RE });
+  if (q.status) and.push({ status: await statusVariantsRegex(q.status) });
+  if (q.facility) and.push({ shipmentFacility: q.facility });
+  if (q.stale === '1') {
+    and.push({ status: { $not: DELIVERED_RE } });
+    and.push({ createdAt: { $lt: new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000) } });
+  }
+  const search = typeof q.search === 'string' ? q.search.trim().slice(0, 100) : '';
+  if (search) {
+    const re = new RegExp(escapeRegex(search), 'i');
+    and.push({ $or: ['trackingNumber', 'senderName', 'recipientName', 'destination', 'status'].map((f) => ({ [f]: re })) });
+  }
+  return and.length ? { $and: and } : {};
+};
+
+// GET /api/shipments/stats — summary counts for the shipments dashboard (Admin/Employee/Agent)
+exports.getShipmentStats = async (req, res) => {
+  try {
+    const staleBefore = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
+    const [result] = await Shipment.aggregate([
+      { $project: { status: 1, createdAt: 1, shipmentFacility: 1, delivered: { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: DELIVERED_RE } } } },
+      {
+        $facet: {
+          totals: [{ $group: { _id: '$delivered', count: { $sum: 1 }, oldest: { $min: '$createdAt' } } }],
+          stale: [{ $match: { delivered: false, createdAt: { $lt: staleBefore } } }, { $count: 'count' }],
+          byStatus: [{ $match: { delivered: false } }, { $group: { _id: '$status', count: { $sum: 1 } } }],
+          byFacility: [{ $match: { delivered: false } }, { $group: { _id: '$shipmentFacility', count: { $sum: 1 } } }],
+        },
+      },
+    ]);
+    const open = result.totals.find((t) => t._id === false);
+    const delivered = result.totals.find((t) => t._id === true);
+    res.json({
+      open: open?.count || 0,
+      delivered: delivered?.count || 0,
+      total: (open?.count || 0) + (delivered?.count || 0),
+      stale: result.stale[0]?.count || 0,
+      staleAfterDays: STALE_DAYS,
+      oldestOpenCreatedAt: open?.oldest || null,
+      byStatus: result.byStatus.map((s) => ({ status: s._id || 'unknown', count: s.count })),
+      openByFacility: Object.fromEntries(result.byFacility.filter((f) => f._id).map((f) => [f._id, f.count])),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
