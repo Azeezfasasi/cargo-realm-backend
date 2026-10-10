@@ -1,4 +1,7 @@
 const Shipment = require('../models/Shipment');
+const ShipmentStatus = require('../models/ShipmentStatus');
+const cloudinary = require('../utils/cloudinary');
+const crypto = require('crypto');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
 const QRCode = require('qrcode');
@@ -415,10 +418,24 @@ exports.trackShipment = async (req, res) => {
   }
 };
 
+// CAR + 11 random digits (same format as before), checked against existing shipments
+const generateUniqueTrackingNumber = async () => {
+  for (let i = 0; i < 10; i++) {
+    const candidate = `CAR${crypto.randomInt(10000000000, 99999999999)}`;
+    if (!(await Shipment.exists({ trackingNumber: candidate }))) return candidate;
+  }
+  throw new Error('Could not generate a unique tracking number. Please try again.');
+};
+
 // 4. Create a new shipment (Admin only)
 exports.createShipment = async (req, res) => {
   try {
-    const { senderEmail, sender, ...shipmentData } = req.body;
+    // Tracking number, history, QR and delivery time are always set by the server
+    const {
+      senderEmail, sender,
+      trackingNumber: _clientTrackingNumber, trackingHistory: _h, replies: _r, qrCodeUrl: _q, deliveredAt: _d, _id: _i,
+      ...shipmentData
+    } = req.body;
 
     // Handle email-based sender assignment
     let finalSenderId = sender;
@@ -452,8 +469,18 @@ exports.createShipment = async (req, res) => {
       timestamp: new Date()
     });
 
-    const savedShipment = await newShipment.save();
-    
+    // Assign a unique tracking number; retry on the rare collision with an existing one
+    let savedShipment;
+    for (let attempt = 1; !savedShipment; attempt++) {
+      newShipment.trackingNumber = await generateUniqueTrackingNumber();
+      try {
+        savedShipment = await newShipment.save();
+      } catch (saveErr) {
+        const isTrackingCollision = saveErr.code === 11000 && saveErr.keyPattern?.trackingNumber;
+        if (!isTrackingCollision || attempt >= 5) throw saveErr;
+      }
+    }
+
     // --- GENERATE QR CODE ---
     // try {
     //   const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${savedShipment.trackingNumber}`;
@@ -516,16 +543,26 @@ exports.editShipment = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. You can only edit your own shipments.' });
     }
 
-    // History, replies and ownership are managed by their own endpoints. Clients also
-    // can't change status, cost or tracking number by editing their own shipment.
+    // Status (with its history, rules and proof of delivery), payments, replies and ownership
+    // are managed by their own endpoints; the tracking number is fixed (it's encoded in the
+    // QR code). Clients also can't change cost or facility.
     const updates = { ...req.body };
-    ['_id', 'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt'].forEach((f) => delete updates[f]);
+    ['_id', 'trackingNumber', 'status', 'deliveredAt', 'proofOfDelivery', 'payments', 'amountPaid', 'paymentStatus',
+      'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt']
+      .forEach((f) => delete updates[f]);
     if (!isStaff) {
-      ['status', 'cost', 'trackingNumber', 'shipmentFacility'].forEach((f) => delete updates[f]);
+      ['cost', 'shipmentFacility'].forEach((f) => delete updates[f]);
     }
 
-    const updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
-    
+    let updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+
+    // A cost change can turn a part-paid shipment into paid (or back)
+    const previousPaymentStatus = updatedShipment.paymentStatus;
+    updatedShipment.recalculatePayments();
+    if (updatedShipment.paymentStatus !== previousPaymentStatus || updatedShipment.isModified('amountPaid')) {
+      updatedShipment = await updatedShipment.save();
+    }
+
     // --- EMAIL NOTIFICATION: SHIPMENT EDITED (Client) ---
     const clientSubject = `Shipment Updated: #${updatedShipment.trackingNumber}`;
     const clientBody = `Details for your shipment with tracking number ${updatedShipment.trackingNumber} have been updated.`;
@@ -560,6 +597,19 @@ exports.deleteShipment = async (req, res) => {
   }
 };
 
+const FINAL_STATUSES = ['delivered', 'cancelled'];
+const normalizeStatus = (s) => String(s || '').trim().toLowerCase();
+
+// Delivery photos arrive as data URLs (the frontend resizes them first)
+const MAX_DELIVERY_PHOTO_BYTES = 3 * 1024 * 1024;
+const validateDeliveryPhoto = (photo) => {
+  const match = typeof photo === 'string' && photo.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return 'Delivery photo must be a JPEG, PNG or WebP image.';
+  const bytes = Math.floor((match[2].length * 3) / 4);
+  if (bytes > MAX_DELIVERY_PHOTO_BYTES) return 'Delivery photo is too large (max 3 MB).';
+  return null;
+};
+
 // 7. Change shipment status (Admin/Agent)
 exports.changeShipmentStatus = async (req, res) => {
   try {    
@@ -574,17 +624,80 @@ exports.changeShipmentStatus = async (req, res) => {
     // const updatedShipment = await Shipment.findByIdAndUpdate(id, { status }, { new: true, runValidators: true });
 
     const { id } = req.params;
-    const { status, location } = req.body;
-    
-    const updatedShipment = await Shipment.findByIdAndUpdate(
-      id,
-      {
-        status: status,
-        // Push a new entry to the trackingHistory array
-        $push: { trackingHistory: { status: status, location: location, timestamp: new Date() } }
-      },
-      { new: true, runValidators: true }
-    );
+    const status = typeof req.body.status === 'string' ? req.body.status.trim() : '';
+    const location = typeof req.body.location === 'string' ? req.body.location.trim() : undefined;
+
+    if (!status) {
+      return res.status(400).json({ message: 'Status is required.' });
+    }
+
+    const current = await Shipment.findById(id).select('status trackingNumber');
+    if (!current) {
+      return res.status(404).json({ message: 'Shipment not found' });
+    }
+
+    // Status must be one of the configured active statuses (skipped if none are configured)
+    const activeStatuses = await ShipmentStatus.find({ isActive: true }).select('name code').lean();
+    if (activeStatuses.length > 0) {
+      const allowed = new Set();
+      activeStatuses.forEach((s) => {
+        if (s.code) allowed.add(s.code.toLowerCase());
+        if (s.name) allowed.add(s.name.toLowerCase());
+      });
+      if (!allowed.has(status.toLowerCase())) {
+        return res.status(400).json({ message: `"${status}" is not an active shipment status.` });
+      }
+    }
+
+    // Delivered/cancelled are final; only an admin can reopen one (e.g. to correct a mistake)
+    if (FINAL_STATUSES.includes(normalizeStatus(current.status)) && req.user.role !== 'admin'
+        && normalizeStatus(status) !== normalizeStatus(current.status)) {
+      return res.status(403).json({
+        message: `Shipment ${current.trackingNumber} is already ${current.status}. Only an admin can change its status.`,
+      });
+    }
+
+    const historyEntry = { status, location, timestamp: new Date(), updatedBy: req.user._id };
+    const isNowDelivered = normalizeStatus(status) === 'delivered';
+    const wasDelivered = normalizeStatus(current.status) === 'delivered';
+
+    // Optional proof of delivery when marking delivered: receiver name, notes, photo
+    let proofOfDelivery;
+    if (isNowDelivered && req.body.proofOfDelivery && typeof req.body.proofOfDelivery === 'object') {
+      const { receivedBy, notes, photo } = req.body.proofOfDelivery;
+      proofOfDelivery = {
+        receivedBy: typeof receivedBy === 'string' ? receivedBy.trim().slice(0, 120) : undefined,
+        notes: typeof notes === 'string' ? notes.trim().slice(0, 1000) : undefined,
+        recordedBy: req.user._id,
+        recordedAt: new Date(),
+      };
+      if (photo) {
+        const photoError = validateDeliveryPhoto(photo);
+        if (photoError) return res.status(400).json({ message: photoError });
+        try {
+          const uploaded = await cloudinary.uploader.upload(photo, {
+            folder: 'cargo_realm/proof_of_delivery',
+            public_id: `pod_${current.trackingNumber}_${Date.now()}`,
+          });
+          proofOfDelivery.photoUrl = uploaded.secure_url;
+        } catch (uploadErr) {
+          console.error('Proof of delivery photo upload failed:', uploadErr);
+          return res.status(502).json({ message: 'Could not upload the delivery photo. Please try again or submit without it.' });
+        }
+      }
+    }
+
+    const update = { status, $push: { trackingHistory: historyEntry } };
+    if (isNowDelivered) {
+      // deliveredAt records when it was actually delivered (deliveryDate is the estimate)
+      if (!wasDelivered) update.deliveredAt = new Date();
+      if (proofOfDelivery) update.proofOfDelivery = proofOfDelivery;
+    } else {
+      // Reopened (admin only) or never delivered: clear delivery records
+      update.$unset = { deliveredAt: 1, proofOfDelivery: 1 };
+    }
+
+    const updatedShipment = await Shipment.findByIdAndUpdate(id, update, { new: true, runValidators: true });
 
     if (!updatedShipment) {
       return res.status(404).json({ message: 'Shipment not found' });
@@ -616,47 +729,47 @@ exports.changeShipmentStatus = async (req, res) => {
   }
 };
 
-// 8. Print shipment (Placeholder)
-exports.printShipment = async (req, res) => {
+// Document data for print/invoice/waybill. The PDFs themselves are rendered in the
+// frontend; these endpoints return the data, and clients may only fetch their own.
+const loadShipmentForDocument = async (req, res) => {
+  const shipment = await Shipment.findById(req.params.id).select('-replies');
+  if (!shipment) {
+    res.status(404).json({ message: 'Shipment not found' });
+    return null;
+  }
+  const isStaff = ['admin', 'employee', 'agent'].includes(req.user.role);
+  const isOwner = shipment.sender && String(shipment.sender) === String(req.user.id);
+  if (!isStaff && !isOwner) {
+    res.status(403).json({ message: 'Access denied. You can only access documents for your own shipments.' });
+    return null;
+  }
+  return shipment;
+};
+
+const documentHandler = (buildExtra = () => ({})) => async (req, res) => {
   try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for printing shipment ${id}.`, shipment });
+    const shipment = await loadShipmentForDocument(req, res);
+    if (!shipment) return;
+    res.json({ shipment, ...buildExtra(shipment) });
   } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
     res.status(500).json({ message: err.message });
   }
 };
 
-// 9. Generate invoice (Placeholder)
-exports.generateInvoice = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for generating invoice for shipment ${id}.`, shipment });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+// 8. Print shipment
+exports.printShipment = documentHandler();
 
-// 10. Generate waybill (Placeholder)
-exports.generateWaybill = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for generating waybill for shipment ${id}.`, shipment });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+// 9. Invoice data
+exports.generateInvoice = documentHandler((shipment) => ({
+  invoiceNumber: `INV-${shipment.trackingNumber}`,
+  issueDate: shipment.shipmentDate || shipment.createdAt,
+  currency: 'NGN',
+  total: Number(shipment.cost) || 0,
+}));
+
+// 10. Waybill data
+exports.generateWaybill = documentHandler();
 
 // 11. Reply to shipment (push to replies array)
 exports.replyToShipment = async (req, res) => {
@@ -744,6 +857,71 @@ exports.generateMissingQRCodes = async (req, res) => {
 
   } catch (err) {
     console.error('Batch QR generation error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 13. Record a payment against a shipment (Admin/Employee/Agent)
+const PAYMENT_METHODS = ['cash', 'bank-transfer', 'card', 'pos', 'other'];
+
+exports.addPayment = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const amount = Math.round(Number(req.body.amount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Enter a payment amount greater than zero.' });
+    }
+    const method = PAYMENT_METHODS.includes(req.body.method) ? req.body.method : 'cash';
+
+    // Don't allow paying more than is owed when the shipment has a cost
+    shipment.recalculatePayments();
+    const cost = Number(shipment.cost) || 0;
+    const balance = Math.round((cost - shipment.amountPaid) * 100) / 100;
+    if (cost > 0 && amount > balance) {
+      return res.status(400).json({
+        message: balance > 0
+          ? `Amount exceeds the balance due (${balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}).`
+          : 'This shipment is already fully paid.',
+      });
+    }
+
+    const paidAt = req.body.paidAt ? new Date(req.body.paidAt) : new Date();
+    shipment.payments.push({
+      amount,
+      method,
+      reference: typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 120) : undefined,
+      note: typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 500) : undefined,
+      paidAt: Number.isNaN(paidAt.getTime()) ? new Date() : paidAt,
+      recordedBy: req.user._id,
+    });
+    shipment.recalculatePayments();
+    const saved = await shipment.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    console.error('Add payment error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 14. Remove a payment recorded in error (Admin only)
+exports.deletePayment = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const payment = shipment.payments.id(req.params.paymentId);
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+
+    payment.deleteOne();
+    shipment.recalculatePayments();
+    const saved = await shipment.save();
+    res.json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Payment not found' });
+    console.error('Delete payment error:', err);
     res.status(500).json({ message: err.message });
   }
 };
