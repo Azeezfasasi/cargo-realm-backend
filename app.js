@@ -4,9 +4,6 @@ const cors = require('cors');
 const app = express();
 const connectDB = require('./config/db');
 
-// Connect to MongoDB
-connectDB();
-
 app.use(cors({
   origin: [
     'https://cargo-realm-logistics.netlify.app',
@@ -26,6 +23,21 @@ app.use(cors({
 // Fix for large base64 uploads
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.get('/', (req, res) => {
+  res.send('Welcome to Cargo Realm and Logistics!');
+});
+
+// Ensure MongoDB is connected before handling any request (needed on serverless,
+// where each cold start begins without a connection)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: 'Database unavailable. Please try again.' });
+  }
+});
 
 // Register all routes after app is initialized
 app.use('/api/test', require('./routes/testRoutes'));
@@ -47,11 +59,13 @@ app.use('/api/services', require('./routes/servicesRoutes'));
 app.use('/api/messageslides', require('./routes/meesageslidesRoutes'));
 app.use('/api/sms', require('./routes/smsRoutes'));
 
-app.get('/', (req, res) => {
-  res.send('Welcome to Cargo Realm and Logistics!');
-});
+// Only start a listener when run directly (local dev / Render).
+// On Vercel the app is imported by api/index.js instead.
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+module.exports = app;

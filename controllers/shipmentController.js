@@ -2,6 +2,7 @@ const Shipment = require('../models/Shipment');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
 const QRCode = require('qrcode');
+const { waitUntil } = require('@vercel/functions');
 const { sendShipmentCreationSMS, sendShipmentStatusUpdateSMS } = require('../utils/shipmentSmsHelper');
 
 // Helper function to generate and save QR code for a shipment
@@ -348,9 +349,9 @@ exports.getAllShipments = async (req, res) => {
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
-        generateQRCodeForShipment(shipment).catch(err => 
+        waitUntil(generateQRCodeForShipment(shipment).catch(err =>
           console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-        );
+        ));
       }
     });
     
@@ -369,9 +370,9 @@ exports.getMyShipments = async (req, res) => {
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
-        generateQRCodeForShipment(shipment).catch(err => 
+        waitUntil(generateQRCodeForShipment(shipment).catch(err =>
           console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-        );
+        ));
       }
     });
     
@@ -392,9 +393,9 @@ exports.trackShipment = async (req, res) => {
     
     // Auto-generate QR code if missing (non-blocking)
     if (!shipment.qrCodeUrl) {
-      generateQRCodeForShipment(shipment).catch(err => 
+      waitUntil(generateQRCodeForShipment(shipment).catch(err =>
         console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-      );
+      ));
     }
     
     res.json(shipment);
