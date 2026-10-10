@@ -616,47 +616,47 @@ exports.changeShipmentStatus = async (req, res) => {
   }
 };
 
-// 8. Print shipment (Placeholder)
-exports.printShipment = async (req, res) => {
+// Document data for print/invoice/waybill. The PDFs themselves are rendered in the
+// frontend; these endpoints return the data, and clients may only fetch their own.
+const loadShipmentForDocument = async (req, res) => {
+  const shipment = await Shipment.findById(req.params.id).select('-replies');
+  if (!shipment) {
+    res.status(404).json({ message: 'Shipment not found' });
+    return null;
+  }
+  const isStaff = ['admin', 'employee', 'agent'].includes(req.user.role);
+  const isOwner = shipment.sender && String(shipment.sender) === String(req.user.id);
+  if (!isStaff && !isOwner) {
+    res.status(403).json({ message: 'Access denied. You can only access documents for your own shipments.' });
+    return null;
+  }
+  return shipment;
+};
+
+const documentHandler = (buildExtra = () => ({})) => async (req, res) => {
   try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for printing shipment ${id}.`, shipment });
+    const shipment = await loadShipmentForDocument(req, res);
+    if (!shipment) return;
+    res.json({ shipment, ...buildExtra(shipment) });
   } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
     res.status(500).json({ message: err.message });
   }
 };
 
-// 9. Generate invoice (Placeholder)
-exports.generateInvoice = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for generating invoice for shipment ${id}.`, shipment });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+// 8. Print shipment
+exports.printShipment = documentHandler();
 
-// 10. Generate waybill (Placeholder)
-exports.generateWaybill = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shipment = await Shipment.findById(id);
-    if (!shipment) {
-      return res.status(404).json({ message: 'Shipment not found' });
-    }
-    res.json({ message: `Placeholder for generating waybill for shipment ${id}.`, shipment });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+// 9. Invoice data
+exports.generateInvoice = documentHandler((shipment) => ({
+  invoiceNumber: `INV-${shipment.trackingNumber}`,
+  issueDate: shipment.shipmentDate || shipment.createdAt,
+  currency: 'NGN',
+  total: Number(shipment.cost) || 0,
+}));
+
+// 10. Waybill data
+exports.generateWaybill = documentHandler();
 
 // 11. Reply to shipment (push to replies array)
 exports.replyToShipment = async (req, res) => {
