@@ -382,23 +382,34 @@ exports.getMyShipments = async (req, res) => {
   }
 };
 
+// Fields safe to show on the public tracking page (qrCodeUrl is only used internally)
+const PUBLIC_TRACKING_FIELDS = [
+  'trackingNumber', 'status', 'senderName', 'recipientName', 'origin', 'destination',
+  'items', 'shipmentPieces', 'shipmentType', 'shipmentPurpose', 'shipmentDate', 'deliveryDate',
+  'trackingHistory.status', 'trackingHistory.location', 'trackingHistory.timestamp',
+  'createdAt', 'updatedAt', 'qrCodeUrl',
+].join(' ');
+
 // 3. Track a shipment (Public)
 exports.trackShipment = async (req, res) => {
   try {
     const { trackingNumber } = req.params;
-    const shipment = await Shipment.findOne({ trackingNumber }).select('-sender'); // Do not expose sender info publicly
+    // Public endpoint: only return what the tracking page displays. Contact details,
+    // addresses, cost, notes and internal replies must never be exposed here.
+    const shipment = await Shipment.findOne({ trackingNumber }).select(PUBLIC_TRACKING_FIELDS);
     if (!shipment) {
       return res.status(404).json({ message: 'Shipment not found' });
     }
-    
+
     // Auto-generate QR code if missing (non-blocking)
     if (!shipment.qrCodeUrl) {
       waitUntil(generateQRCodeForShipment(shipment).catch(err =>
         console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
       ));
     }
-    
-    res.json(shipment);
+
+    const { qrCodeUrl, ...publicShipment } = shipment.toObject();
+    res.json(publicShipment);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -496,13 +507,24 @@ exports.editShipment = async (req, res) => {
       return res.status(404).json({ message: 'Shipment not found' });
     }
 
-    // Check if user is an admin or the sender of the shipment
-    const isAuthorized = req.user.role === 'admin' || shipment.sender.toString() === req.user.id;
+    // Staff (who can also create shipments) may edit any shipment; clients only their own.
+    // `sender` is populated and may be null for shipments created for external emails.
+    const isStaff = ['admin', 'employee', 'agent'].includes(req.user.role);
+    const isOwner = shipment.sender && String(shipment.sender._id) === String(req.user.id);
+    const isAuthorized = isStaff || isOwner;
     if (!isAuthorized) {
       return res.status(403).json({ message: 'Access denied. You can only edit your own shipments.' });
     }
 
-    const updatedShipment = await Shipment.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
+    // History, replies and ownership are managed by their own endpoints. Clients also
+    // can't change status, cost or tracking number by editing their own shipment.
+    const updates = { ...req.body };
+    ['_id', 'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt'].forEach((f) => delete updates[f]);
+    if (!isStaff) {
+      ['status', 'cost', 'trackingNumber', 'shipmentFacility'].forEach((f) => delete updates[f]);
+    }
+
+    const updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
     
     // --- EMAIL NOTIFICATION: SHIPMENT EDITED (Client) ---
     const clientSubject = `Shipment Updated: #${updatedShipment.trackingNumber}`;
