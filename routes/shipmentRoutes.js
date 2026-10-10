@@ -35,6 +35,13 @@ router.post('/:id/payments', authenticate, authorize('admin', 'employee', 'agent
 // Remove a payment recorded in error (Admin only) DELETE - /api/shipments/:id/payments/:paymentId
 router.delete('/:id/payments/:paymentId', authenticate, authorize('admin'), shipmentController.deletePayment);
 
+// Shipment documents (Admin/Employee/Agent): sign a direct Cloudinary upload, record it, delete it
+router.post('/:id/documents/signature', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.getDocumentUploadSignature);
+router.post('/:id/documents', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.addDocument);
+router.delete('/:id/documents/:documentId', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.deleteDocument);
+// Signed download link (staff, or the client who owns the shipment)
+router.get('/:id/documents/:documentId/download', authenticate, shipmentController.getDocumentDownloadUrl);
+
 // Reply to a shipment (Authenticated users) POST - /api/shipments/:id/reply
 router.post('/:id/reply', authenticate, shipmentController.replyToShipment);
 

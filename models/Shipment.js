@@ -31,6 +31,18 @@ const proofOfDeliverySchema = new mongoose.Schema({
   recordedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
+const documentSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true }, // original file name
+  label: { type: String, trim: true }, // e.g. "Customs declaration"
+  url: { type: String, required: true },
+  publicId: { type: String, required: true },
+  resourceType: { type: String, enum: ['image', 'raw'], default: 'raw' },
+  format: String,
+  bytes: Number,
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  uploadedAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const shipmentSchema = new mongoose.Schema({
   trackingNumber: { type: String, required: true, unique: true },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, default: null },
@@ -71,6 +83,7 @@ const shipmentSchema = new mongoose.Schema({
   shipmentFacility: String,
   trackingHistory: [trackingHistorySchema],
   replies: [replySchema],
+  documents: [documentSchema], // customs papers, invoices, photos (stored in Cloudinary)
   qrCodeUrl: { type: String, default: null }, // Stores the QR code URL
 }, { timestamps: true });
 

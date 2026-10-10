@@ -925,3 +925,125 @@ exports.deletePayment = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// --- Shipment documents --------------------------------------------------------
+// Files go straight from the browser to Cloudinary (avoids Vercel's 4.5 MB body
+// limit); the backend signs the upload and then records the result.
+const documentFolder = (shipmentId) => `cargo_realm/shipment_documents/${shipmentId}`;
+
+// 15. Signature for a direct browser upload (Admin/Employee/Agent)
+exports.getDocumentUploadSignature = async (req, res) => {
+  try {
+    const exists = await Shipment.exists({ _id: req.params.id });
+    if (!exists) return res.status(404).json({ message: 'Shipment not found' });
+
+    const timestamp = Math.round(Date.now() / 1000);
+    // Every signed param must be sent unchanged by the browser
+    const params = { timestamp, folder: documentFolder(req.params.id), use_filename: true, unique_filename: true };
+    const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
+    res.json({
+      ...params,
+      signature,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 16. Record an uploaded document on the shipment (Admin/Employee/Agent)
+exports.addDocument = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const { name, label, url, publicId, resourceType, format, bytes } = req.body;
+    const expectedUrlPrefix = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`;
+    // Only accept files that were uploaded into this shipment's folder in our Cloudinary account
+    if (typeof url !== 'string' || !url.startsWith(expectedUrlPrefix)
+        || typeof publicId !== 'string' || !publicId.startsWith(`${documentFolder(shipment._id)}/`)) {
+      return res.status(400).json({ message: 'Invalid document upload.' });
+    }
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ message: 'Document name is required.' });
+    }
+
+    shipment.documents.push({
+      name: name.trim().slice(0, 200),
+      label: typeof label === 'string' ? label.trim().slice(0, 100) : undefined,
+      url,
+      publicId,
+      resourceType: resourceType === 'image' ? 'image' : 'raw',
+      format: typeof format === 'string' ? format.slice(0, 10) : undefined,
+      bytes: Number(bytes) || undefined,
+      uploadedBy: req.user._id,
+    });
+    const saved = await shipment.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    console.error('Add document error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 17. Delete a document (Admin, or the staff member who uploaded it)
+exports.deleteDocument = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+    const doc = shipment.documents.id(req.params.documentId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+    const isUploader = doc.uploadedBy && String(doc.uploadedBy) === String(req.user._id);
+    if (req.user.role !== 'admin' && !isUploader) {
+      return res.status(403).json({ message: 'Only an admin or the person who uploaded it can delete this document.' });
+    }
+
+    try {
+      await cloudinary.uploader.destroy(doc.publicId, { resource_type: doc.resourceType || 'raw' });
+    } catch (cloudErr) {
+      // Still remove the record; an orphaned file is better than a broken link
+      console.error('Cloudinary delete failed for', doc.publicId, cloudErr.message);
+    }
+    doc.deleteOne();
+    const saved = await shipment.save();
+    res.json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Document not found' });
+    console.error('Delete document error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 18. Short-lived download link for a document (staff, or the client who owns the shipment).
+// Signed API downloads work even when the Cloudinary account blocks public PDF delivery,
+// and keep documents private to people who can see the shipment.
+exports.getDocumentDownloadUrl = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id).select('sender documents');
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const isStaff = ['admin', 'employee', 'agent'].includes(req.user.role);
+    const isOwner = shipment.sender && String(shipment.sender) === String(req.user._id);
+    if (!isStaff && !isOwner) return res.status(403).json({ message: 'Access denied.' });
+
+    const doc = shipment.documents.id(req.params.documentId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+    const resourceType = doc.resourceType || 'raw';
+    // Raw public IDs already end in the extension; images need the format passed separately
+    const url = cloudinary.utils.private_download_url(doc.publicId, resourceType === 'raw' ? '' : (doc.format || ''), {
+      resource_type: resourceType,
+      type: 'upload',
+      attachment: req.query.inline !== '1',
+      expires_at: Math.floor(Date.now() / 1000) + 10 * 60,
+    });
+    res.json({ url, name: doc.name });
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Document not found' });
+    res.status(500).json({ message: err.message });
+  }
+};
