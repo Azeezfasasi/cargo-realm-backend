@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const shipmentController = require('../controllers/shipmentController');
 const { authenticate, authorize } = require('../middleware/auth');
+const rateLimit = require('../middleware/rateLimit');
 
 // Get all shipments (Admin/Agent only) GET - /api/shipments
 router.get('/', authenticate, authorize('admin', 'agent', 'employee'), shipmentController.getAllShipments);
@@ -10,7 +11,8 @@ router.get('/', authenticate, authorize('admin', 'agent', 'employee'), shipmentC
 router.get('/my-shipments', authenticate, shipmentController.getMyShipments);
 
 // Track shipment (Public, no auth needed) GET - /api/shipments/track/:trackingNumber
-router.get('/track/:trackingNumber', shipmentController.trackShipment);
+// Rate limited per IP so tracking numbers can't be guessed by brute force
+router.get('/track/:trackingNumber', rateLimit({ name: 'track', max: 30, windowMs: 60 * 1000 }), shipmentController.trackShipment);
 
 // Create a new shipment (Admin only, as per your request) POST - /api/shipments
 router.post('/', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.createShipment);
