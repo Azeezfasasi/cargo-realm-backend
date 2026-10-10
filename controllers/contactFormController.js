@@ -305,6 +305,12 @@ exports.deleteContactForm = async (req, res) => {
   }
 };
 
+// Reply emails: escape user-entered text and keep its line breaks
+const escapeHtml = (str = '') => String(str)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const textToHtml = (str = '') => escapeHtml(str).replace(/\r?\n/g, '<br>');
+
 // Function to reply to a contact form submission
 exports.replyToContactForm = async (req, res) => {
   try {
@@ -328,7 +334,7 @@ exports.replyToContactForm = async (req, res) => {
             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
               <tr>
                 <td style="background-color: #007bff; color: #ffffff; padding: 25px 20px; text-align: center; border-top-left-radius: 8px; border-top-right-radius: 8px;">
-                  <h2 style="margin: 0; font-size: 28px; font-weight: bold;">${subject}</h2>
+                  <h2 style="margin: 0; font-size: 28px; font-weight: bold;">${escapeHtml(subject)}</h2>
                 </td>
               </tr>
             </table>
@@ -336,14 +342,14 @@ exports.replyToContactForm = async (req, res) => {
             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
               <tr>
                 <td style="padding: 20px 30px;">
-                  <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hi ${contactForm.name || 'Valued Member'},</p>
+                  <p style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Hi ${escapeHtml(contactForm.name || 'Valued Member')},</p>
                   <p style="margin-bottom: 15px; font-size: 16px;">Thank you for your message. Here is a reply from Cargo Realm and Logistics:</p>
                   <blockquote style="border-left: 4px solid #ccc; margin: 0; padding-left: 10px; color: #555; font-style: italic;">
-                    <p>${replyContent}</p>
+                    <p>${textToHtml(replyContent)}</p>
                   </blockquote>
                   <p style="margin-top: 20px; margin-bottom: 15px; font-size: 16px;">Original Message:</p>
                   <blockquote style="border-left: 4px solid #eee; margin: 0; padding-left: 10px; color: #777; font-style: italic;">
-                    <p>${contactForm.message}</p>
+                    <p>${textToHtml(contactForm.message)}</p>
                   </blockquote>
                   <p style="margin-top: 25px; margin-bottom: 0; font-size: 16px;">Sincerely,</p>
                   <p style="margin-top: 5px; margin-bottom: 0; font-size: 16px; font-weight: bold;">Cargo Realm and Logistics Team</p>
