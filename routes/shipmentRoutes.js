@@ -27,6 +27,12 @@ router.patch('/:id/status', authenticate, authorize('admin', 'employee', 'agent'
 // Generate QR codes for all shipments missing them (Admin only) POST - /api/shipments/generate-qr-codes
 router.post('/generate-qr-codes', authenticate, authorize('admin'), shipmentController.generateMissingQRCodes);
 
+// Record a payment (Admin/Employee/Agent) POST - /api/shipments/:id/payments
+router.post('/:id/payments', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.addPayment);
+
+// Remove a payment recorded in error (Admin only) DELETE - /api/shipments/:id/payments/:paymentId
+router.delete('/:id/payments/:paymentId', authenticate, authorize('admin'), shipmentController.deletePayment);
+
 // Reply to a shipment (Authenticated users) POST - /api/shipments/:id/reply
 router.post('/:id/reply', authenticate, shipmentController.replyToShipment);
 

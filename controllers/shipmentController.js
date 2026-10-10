@@ -1,5 +1,6 @@
 const Shipment = require('../models/Shipment');
 const ShipmentStatus = require('../models/ShipmentStatus');
+const cloudinary = require('../utils/cloudinary');
 const crypto = require('crypto');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
@@ -542,18 +543,26 @@ exports.editShipment = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. You can only edit your own shipments.' });
     }
 
-    // Status (with its history and rules), replies and ownership are managed by their own
-    // endpoints; the tracking number is fixed (it's encoded in the QR code). Clients also
-    // can't change cost or facility.
+    // Status (with its history, rules and proof of delivery), payments, replies and ownership
+    // are managed by their own endpoints; the tracking number is fixed (it's encoded in the
+    // QR code). Clients also can't change cost or facility.
     const updates = { ...req.body };
-    ['_id', 'trackingNumber', 'status', 'deliveredAt', 'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt']
+    ['_id', 'trackingNumber', 'status', 'deliveredAt', 'proofOfDelivery', 'payments', 'amountPaid', 'paymentStatus',
+      'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt']
       .forEach((f) => delete updates[f]);
     if (!isStaff) {
       ['cost', 'shipmentFacility'].forEach((f) => delete updates[f]);
     }
 
-    const updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
-    
+    let updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+
+    // A cost change can turn a part-paid shipment into paid (or back)
+    const previousPaymentStatus = updatedShipment.paymentStatus;
+    updatedShipment.recalculatePayments();
+    if (updatedShipment.paymentStatus !== previousPaymentStatus || updatedShipment.isModified('amountPaid')) {
+      updatedShipment = await updatedShipment.save();
+    }
+
     // --- EMAIL NOTIFICATION: SHIPMENT EDITED (Client) ---
     const clientSubject = `Shipment Updated: #${updatedShipment.trackingNumber}`;
     const clientBody = `Details for your shipment with tracking number ${updatedShipment.trackingNumber} have been updated.`;
@@ -590,6 +599,16 @@ exports.deleteShipment = async (req, res) => {
 
 const FINAL_STATUSES = ['delivered', 'cancelled'];
 const normalizeStatus = (s) => String(s || '').trim().toLowerCase();
+
+// Delivery photos arrive as data URLs (the frontend resizes them first)
+const MAX_DELIVERY_PHOTO_BYTES = 3 * 1024 * 1024;
+const validateDeliveryPhoto = (photo) => {
+  const match = typeof photo === 'string' && photo.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return 'Delivery photo must be a JPEG, PNG or WebP image.';
+  const bytes = Math.floor((match[2].length * 3) / 4);
+  if (bytes > MAX_DELIVERY_PHOTO_BYTES) return 'Delivery photo is too large (max 3 MB).';
+  return null;
+};
 
 // 7. Change shipment status (Admin/Agent)
 exports.changeShipmentStatus = async (req, res) => {
@@ -640,12 +659,43 @@ exports.changeShipmentStatus = async (req, res) => {
 
     const historyEntry = { status, location, timestamp: new Date(), updatedBy: req.user._id };
     const isNowDelivered = normalizeStatus(status) === 'delivered';
-    const update = {
-      status,
-      $push: { trackingHistory: historyEntry },
+    const wasDelivered = normalizeStatus(current.status) === 'delivered';
+
+    // Optional proof of delivery when marking delivered: receiver name, notes, photo
+    let proofOfDelivery;
+    if (isNowDelivered && req.body.proofOfDelivery && typeof req.body.proofOfDelivery === 'object') {
+      const { receivedBy, notes, photo } = req.body.proofOfDelivery;
+      proofOfDelivery = {
+        receivedBy: typeof receivedBy === 'string' ? receivedBy.trim().slice(0, 120) : undefined,
+        notes: typeof notes === 'string' ? notes.trim().slice(0, 1000) : undefined,
+        recordedBy: req.user._id,
+        recordedAt: new Date(),
+      };
+      if (photo) {
+        const photoError = validateDeliveryPhoto(photo);
+        if (photoError) return res.status(400).json({ message: photoError });
+        try {
+          const uploaded = await cloudinary.uploader.upload(photo, {
+            folder: 'cargo_realm/proof_of_delivery',
+            public_id: `pod_${current.trackingNumber}_${Date.now()}`,
+          });
+          proofOfDelivery.photoUrl = uploaded.secure_url;
+        } catch (uploadErr) {
+          console.error('Proof of delivery photo upload failed:', uploadErr);
+          return res.status(502).json({ message: 'Could not upload the delivery photo. Please try again or submit without it.' });
+        }
+      }
+    }
+
+    const update = { status, $push: { trackingHistory: historyEntry } };
+    if (isNowDelivered) {
       // deliveredAt records when it was actually delivered (deliveryDate is the estimate)
-      ...(isNowDelivered ? { deliveredAt: new Date() } : { $unset: { deliveredAt: 1 } }),
-    };
+      if (!wasDelivered) update.deliveredAt = new Date();
+      if (proofOfDelivery) update.proofOfDelivery = proofOfDelivery;
+    } else {
+      // Reopened (admin only) or never delivered: clear delivery records
+      update.$unset = { deliveredAt: 1, proofOfDelivery: 1 };
+    }
 
     const updatedShipment = await Shipment.findByIdAndUpdate(id, update, { new: true, runValidators: true });
 
@@ -807,6 +857,71 @@ exports.generateMissingQRCodes = async (req, res) => {
 
   } catch (err) {
     console.error('Batch QR generation error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 13. Record a payment against a shipment (Admin/Employee/Agent)
+const PAYMENT_METHODS = ['cash', 'bank-transfer', 'card', 'pos', 'other'];
+
+exports.addPayment = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const amount = Math.round(Number(req.body.amount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Enter a payment amount greater than zero.' });
+    }
+    const method = PAYMENT_METHODS.includes(req.body.method) ? req.body.method : 'cash';
+
+    // Don't allow paying more than is owed when the shipment has a cost
+    shipment.recalculatePayments();
+    const cost = Number(shipment.cost) || 0;
+    const balance = Math.round((cost - shipment.amountPaid) * 100) / 100;
+    if (cost > 0 && amount > balance) {
+      return res.status(400).json({
+        message: balance > 0
+          ? `Amount exceeds the balance due (${balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}).`
+          : 'This shipment is already fully paid.',
+      });
+    }
+
+    const paidAt = req.body.paidAt ? new Date(req.body.paidAt) : new Date();
+    shipment.payments.push({
+      amount,
+      method,
+      reference: typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 120) : undefined,
+      note: typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 500) : undefined,
+      paidAt: Number.isNaN(paidAt.getTime()) ? new Date() : paidAt,
+      recordedBy: req.user._id,
+    });
+    shipment.recalculatePayments();
+    const saved = await shipment.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    console.error('Add payment error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 14. Remove a payment recorded in error (Admin only)
+exports.deletePayment = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const payment = shipment.payments.id(req.params.paymentId);
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+
+    payment.deleteOne();
+    shipment.recalculatePayments();
+    const saved = await shipment.save();
+    res.json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Payment not found' });
+    console.error('Delete payment error:', err);
     res.status(500).json({ message: err.message });
   }
 };
