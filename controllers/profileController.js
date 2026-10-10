@@ -4,6 +4,35 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const sendMail = require('../utils/mailer');
 
+const STAFF_ROLES = ['admin', 'employee'];
+const ALL_ROLES = ['admin', 'employee', 'client', 'agent'];
+const SENSITIVE_FIELDS = '-password -resetToken -resetTokenExpiry';
+
+const publicUser = (user) => {
+  const obj = user.toObject ? user.toObject() : { ...user };
+  delete obj.password;
+  delete obj.resetToken;
+  delete obj.resetTokenExpiry;
+  return obj;
+};
+
+const escapeHtml = (str = '') => String(str)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// The /register route is public. If the request carries a valid staff token, the caller is
+// creating an account for someone else and may choose its role (employees can't create staff).
+const getRequester = async (req) => {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
+    return await User.findById(decoded.id).select('role');
+  } catch {
+    return null;
+  }
+};
+
 // Helper function to generate JWT token
 const generateToken = (id, role) => {
   // Ensure process.env.JWT_SECRET is correctly loaded and used here
@@ -15,32 +44,41 @@ const generateToken = (id, role) => {
 
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phoneNumber, gender } = req.body;
-    
-    console.log('--- Incoming Register Request ---');
-    console.log('Raw req.body:', req.body);
-    console.log('Registering email:', email);
+    const { name, email, password, role, phoneNumber, gender, homeAddress, country, state } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required.' });
+    }
+    if (String(password).length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
 
     let user = await User.findOne({ email });
     if (user) {
-      console.log('Registration failed: User already exists for email:', email);
       return res.status(400).json({ message: 'User already exists' });
     }
-    
-    user = new User({ name, email, password, role, phoneNumber, gender }); // Pass plain text password
-    await user.save(); // The pre('save') hook will hash 'password' before saving
 
-    console.log('Registration successful: User saved to DB:', user.email);
-    console.log('Registered User (after save, with hashed password):', user.password); // Verify it's hashed
-    
+    // Public sign-ups are always clients. Staff creating an account may pick the role;
+    // only admins may create admins or employees.
+    const requester = await getRequester(req);
+    let finalRole = 'client';
+    if (requester && STAFF_ROLES.includes(requester.role) && ALL_ROLES.includes(role)) {
+      if (requester.role === 'admin' || !STAFF_ROLES.includes(role)) finalRole = role;
+      else return res.status(403).json({ message: 'Only an admin can create admin or employee accounts.' });
+    }
+
+    user = new User({ name, email, password, role: finalRole, phoneNumber, gender, homeAddress, country, state });
+    await user.save(); // The pre('save') hook hashes the password
+
     // Optional: Send welcome email
-    await sendMail(email, 'Welcome to Cargo Realm and Logistics', `<p>Hi ${name}, welcome to Cargo Realm and Logistics!</p>`);
+    await sendMail(email, 'Welcome to Cargo Realm and Logistics', `<p>Hi ${escapeHtml(name)}, welcome to Cargo Realm and Logistics!</p>`);
     
-    // If you want to log in the user immediately after registration and send a token:
-    const token = generateToken(user._id, user.role);
-    res.status(201).json({ 
+    // Self sign-ups are logged in straight away; staff creating an account get no token for it
+    const createdByStaff = requester && STAFF_ROLES.includes(requester.role);
+    const token = createdByStaff ? undefined : generateToken(user._id, user.role);
+    res.status(201).json({
       message: 'User registered successfully',
-      token, 
+      token,
       user: { 
         _id: user._id,
         name: user.name,
@@ -59,17 +97,10 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    console.log('--- Incoming Login Request ---');
-    console.log('Raw req.body:', req.body);
-    
     const { email, password } = req.body;
-    
-    console.log('Extracted email:', email, 'Type:', typeof email);
-    console.log('Extracted password:', password, 'Type:', typeof password);
-    
-     // Add a quick type check before Mongoose interaction
+
+    // Never log the request body here: it contains the plain-text password
     if (typeof email !== 'string' || typeof password !== 'string') {
-      console.error('Validation Error: Email or password is not a string. Received types:', typeof email, typeof password);
       return res.status(400).json({ message: 'Invalid input: Email and password must be strings.' });
     }
     
@@ -89,10 +120,7 @@ exports.login = async (req, res) => {
     }
     
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    console.log('--- LOGIN CONTROLLER ---');
-    console.log('Token generated for user:', user.email, 'Role:', user.role);
-    console.log('JWT_SECRET used for signing:', process.env.JWT_SECRET); // DEBUG: Log the secret used for signing
-    res.json({ token, user });
+    res.json({ token, user: publicUser(user) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -138,19 +166,30 @@ exports.editUser = async (req, res) => {
     const updates = { ...req.body };
     const userId = req.params.id;
 
-    console.log('editUser: Request body:', updates); // DEBUG: See what's coming in
-    console.log('editUser: User ID from params:', userId); // DEBUG: See param ID
-    console.log('editUser: Authenticated user ID:', req.user?.id); // DEBUG: See authenticated user ID
-    console.log('editUser: Authenticated user role:', req.user?.role); // DEBUG: See authenticated user role
-
     if (!req.user || !req.user.id) {
-      console.error('editUser: req.user or req.user.id is missing. Authentication likely failed.'); // DEBUG
       return res.status(401).json({ message: 'Not authenticated. Please log in to update profile.' });
     }
 
-    // Ensure user can only edit their own profile unless they are admin
-    if (req.user.role !== 'admin' && userId !== req.user.id) {
-      console.error(`editUser: User ${req.user.id} attempted to edit profile of ${userId} without admin role.`); // DEBUG
+    // Fields never set through this endpoint
+    ['_id', 'resetToken', 'resetTokenExpiry', 'createdAt', 'updatedAt'].forEach((f) => delete updates[f]);
+
+    const isSelf = String(userId) === String(req.user.id);
+    const actorRole = req.user.role;
+    if (isSelf) {
+      // Nobody changes their own role or account status (prevents self-promotion to admin)
+      ['role', 'isDisabled', 'isSuspended'].forEach((f) => delete updates[f]);
+    } else if (actorRole === 'employee') {
+      // Employees manage clients and agents only, and can't promote anyone to staff
+      const target = await User.findById(userId).select('role');
+      if (!target) return res.status(404).json({ message: 'User not found for update.' });
+      if (STAFF_ROLES.includes(target.role)) {
+        return res.status(403).json({ message: 'Only an admin can edit admin or employee accounts.' });
+      }
+      if (updates.role !== undefined && !['client', 'agent'].includes(updates.role)) {
+        return res.status(403).json({ message: 'Only an admin can give a user the admin or employee role.' });
+      }
+      delete updates.password; // use the change-password tool instead
+    } else if (actorRole !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to edit this user profile.' });
     }
 
@@ -170,19 +209,13 @@ exports.editUser = async (req, res) => {
 
     const user = await User.findByIdAndUpdate(userId, updates, { new: true, runValidators: true });
     if (!user) {
-      console.error(`editUser: User with ID ${userId} not found for update.`); // DEBUG
       return res.status(404).json({ message: 'User not found for update.' });
     }
 
-    console.log('editUser: Profile updated successfully for user:', user.email); // DEBUG
-    const userWithoutSensitiveData = user.toObject();
-    delete userWithoutSensitiveData.password;
-    delete userWithoutSensitiveData.resetToken;
-    delete userWithoutSensitiveData.resetTokenExpiry;
-
-    res.json(userWithoutSensitiveData);
+    res.json(publicUser(user));
   } catch (err) {
-    console.error('Error editing user profile:', err.message, err.stack); // DEBUG: Log stack for more info
+    console.error('Error editing user profile:', err.message);
+    if (err.code === 11000) return res.status(400).json({ message: 'That email address is already in use.' });
     // Mongoose validation errors
     if (err.name === 'ValidationError') {
         const messages = Object.values(err.errors).map(val => val.message);
@@ -194,6 +227,9 @@ exports.editUser = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
+    if (String(req.params.id) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot delete your own account.' });
+    }
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ message: 'User deleted' });
@@ -224,7 +260,8 @@ exports.suspendUser = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find();
+    // Never send password hashes or reset tokens to the browser
+    const users = await User.find().select(SENSITIVE_FIELDS).sort({ createdAt: -1 });
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -235,21 +272,28 @@ exports.getAllUsers = async (req, res) => {
 exports.changeUserPasswordByAdmin = async (req, res) => {
   try {
     const { email, newPassword } = req.body;
+    if (typeof email !== 'string' || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ message: 'A valid email and a new password of at least 6 characters are required.' });
+    }
 
     // Find the user by email
-    const userToUpdate = await User.findOne({ email });
+    const userToUpdate = await User.findOne({ email: email.trim() });
     if (!userToUpdate) {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    userToUpdate.password = hashedPassword;
+    // Employees can't take over staff accounts by resetting their passwords
+    if (req.user.role !== 'admin' && STAFF_ROLES.includes(userToUpdate.role)) {
+      return res.status(403).json({ message: 'Only an admin can change the password of an admin or employee.' });
+    }
+
+    // Set the plain password; the pre('save') hook hashes it (hashing here too made it unusable)
+    userToUpdate.password = newPassword;
     await userToUpdate.save();
 
     // Optional: Send a notification email to the user whose password was changed
     await sendMail(userToUpdate.email, 'Your Password Has Been Changed',
-      `<p>Hi ${userToUpdate.name},</p>
+      `<p>Hi ${escapeHtml(userToUpdate.name)},</p>
        <p>Your password for Cargo Realm and Logistics account has been changed by an administrator.</p>
        <p>If you did not request this change, please contact support immediately.</p>
        <p>Thank you,</p>
