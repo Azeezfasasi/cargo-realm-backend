@@ -44,9 +44,10 @@ exports.authenticate = asyncHandler(async (req, res, next) => {
       throw new Error('Not authorized, token failed');
     }
   } else { // If no Authorization header or not Bearer
-    console.warn('AUTHENTICATE MIDDLEWARE WARNING: No Bearer token in Authorization header.');
-    res.status(401);
-    throw new Error('Not authorized, no token');
+    // A normal 401 (e.g. a page calling a protected route before login), so log one
+    // line naming the route instead of throwing a stack trace
+    console.warn(`401 no token: ${req.method} ${req.originalUrl}`);
+    return res.status(401).json({ message: 'Not authorized, no token' });
   }
 });
 

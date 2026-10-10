@@ -58,6 +58,7 @@ app.use('/api/hero', require('./routes/heroRoutes'));
 app.use('/api/services', require('./routes/servicesRoutes'));
 app.use('/api/messageslides', require('./routes/meesageslidesRoutes'));
 app.use('/api/sms', require('./routes/smsRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
 
 // Only start a listener when run directly (local dev / Render).
 // On Vercel the app is imported by api/index.js instead.

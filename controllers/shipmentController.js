@@ -347,8 +347,27 @@ exports.getAllShipments = async (req, res) => {
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied. Only Admins, Agents, and Employees can view all shipments.' });
     }
-    const shipments = await Shipment.find().populate('sender', 'email');
-    
+    // Paginated mode when ?page= is given; otherwise the full list (dashboard widgets use it)
+    const paginated = req.query.page !== undefined;
+    let shipments;
+    let pageInfo;
+    if (paginated) {
+      const filter = await buildShipmentListFilter(req.query);
+      const exportAll = req.query.limit === 'all';
+      const limit = exportAll ? 5000 : Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+      const total = await Shipment.countDocuments(filter);
+      const pages = Math.max(1, Math.ceil(total / limit));
+      const page = exportAll ? 1 : Math.min(pages, Math.max(1, parseInt(req.query.page, 10) || 1));
+      shipments = await Shipment.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('sender', 'email');
+      pageInfo = { total, page, pages, limit };
+    } else {
+      shipments = await Shipment.find().populate('sender', 'email');
+    }
+
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
@@ -357,8 +376,74 @@ exports.getAllShipments = async (req, res) => {
         ));
       }
     });
-    
-    res.json(shipments);
+
+    res.json(paginated ? { items: shipments, ...pageInfo } : shipments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// --- Shipment list filters & stats (staff) -----------------------------------------
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const STALE_DAYS = 14;
+const DELIVERED_RE = /^\s*delivered\s*$/i;
+
+// Statuses may be stored by code ("in-transit") or name ("In Transit"); match all variants
+const statusVariantsRegex = async (status) => {
+  const wanted = String(status).trim();
+  const lower = wanted.toLowerCase();
+  const configured = await ShipmentStatus.find().select('name code').lean();
+  const match = configured.find((s) => [s.code, s.name].some((v) => v && v.trim().toLowerCase() === lower));
+  const variants = new Set([wanted, ...(match ? [match.code, match.name] : [])].filter(Boolean).map((v) => escapeRegex(v.trim())));
+  return new RegExp(`^\\s*(${[...variants].join('|')})\\s*$`, 'i');
+};
+
+// view=open|delivered|all, search, status, facility, stale=1
+const buildShipmentListFilter = async (q) => {
+  const and = [];
+  if (q.view === 'open') and.push({ status: { $not: DELIVERED_RE } });
+  if (q.view === 'delivered') and.push({ status: DELIVERED_RE });
+  if (q.status) and.push({ status: await statusVariantsRegex(q.status) });
+  if (q.facility) and.push({ shipmentFacility: q.facility });
+  if (q.stale === '1') {
+    and.push({ status: { $not: DELIVERED_RE } });
+    and.push({ createdAt: { $lt: new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000) } });
+  }
+  const search = typeof q.search === 'string' ? q.search.trim().slice(0, 100) : '';
+  if (search) {
+    const re = new RegExp(escapeRegex(search), 'i');
+    and.push({ $or: ['trackingNumber', 'senderName', 'recipientName', 'destination', 'status'].map((f) => ({ [f]: re })) });
+  }
+  return and.length ? { $and: and } : {};
+};
+
+// GET /api/shipments/stats — summary counts for the shipments dashboard (Admin/Employee/Agent)
+exports.getShipmentStats = async (req, res) => {
+  try {
+    const staleBefore = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
+    const [result] = await Shipment.aggregate([
+      { $project: { status: 1, createdAt: 1, shipmentFacility: 1, delivered: { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: DELIVERED_RE } } } },
+      {
+        $facet: {
+          totals: [{ $group: { _id: '$delivered', count: { $sum: 1 }, oldest: { $min: '$createdAt' } } }],
+          stale: [{ $match: { delivered: false, createdAt: { $lt: staleBefore } } }, { $count: 'count' }],
+          byStatus: [{ $match: { delivered: false } }, { $group: { _id: '$status', count: { $sum: 1 } } }],
+          byFacility: [{ $match: { delivered: false } }, { $group: { _id: '$shipmentFacility', count: { $sum: 1 } } }],
+        },
+      },
+    ]);
+    const open = result.totals.find((t) => t._id === false);
+    const delivered = result.totals.find((t) => t._id === true);
+    res.json({
+      open: open?.count || 0,
+      delivered: delivered?.count || 0,
+      total: (open?.count || 0) + (delivered?.count || 0),
+      stale: result.stale[0]?.count || 0,
+      staleAfterDays: STALE_DAYS,
+      oldestOpenCreatedAt: open?.oldest || null,
+      byStatus: result.byStatus.map((s) => ({ status: s._id || 'unknown', count: s.count })),
+      openByFacility: Object.fromEntries(result.byFacility.filter((f) => f._id).map((f) => [f._id, f.count])),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -922,6 +1007,128 @@ exports.deletePayment = async (req, res) => {
   } catch (err) {
     if (err.name === 'CastError') return res.status(404).json({ message: 'Payment not found' });
     console.error('Delete payment error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// --- Shipment documents --------------------------------------------------------
+// Files go straight from the browser to Cloudinary (avoids Vercel's 4.5 MB body
+// limit); the backend signs the upload and then records the result.
+const documentFolder = (shipmentId) => `cargo_realm/shipment_documents/${shipmentId}`;
+
+// 15. Signature for a direct browser upload (Admin/Employee/Agent)
+exports.getDocumentUploadSignature = async (req, res) => {
+  try {
+    const exists = await Shipment.exists({ _id: req.params.id });
+    if (!exists) return res.status(404).json({ message: 'Shipment not found' });
+
+    const timestamp = Math.round(Date.now() / 1000);
+    // Every signed param must be sent unchanged by the browser
+    const params = { timestamp, folder: documentFolder(req.params.id), use_filename: true, unique_filename: true };
+    const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
+    res.json({
+      ...params,
+      signature,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    });
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 16. Record an uploaded document on the shipment (Admin/Employee/Agent)
+exports.addDocument = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const { name, label, url, publicId, resourceType, format, bytes } = req.body;
+    const expectedUrlPrefix = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`;
+    // Only accept files that were uploaded into this shipment's folder in our Cloudinary account
+    if (typeof url !== 'string' || !url.startsWith(expectedUrlPrefix)
+        || typeof publicId !== 'string' || !publicId.startsWith(`${documentFolder(shipment._id)}/`)) {
+      return res.status(400).json({ message: 'Invalid document upload.' });
+    }
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ message: 'Document name is required.' });
+    }
+
+    shipment.documents.push({
+      name: name.trim().slice(0, 200),
+      label: typeof label === 'string' ? label.trim().slice(0, 100) : undefined,
+      url,
+      publicId,
+      resourceType: resourceType === 'image' ? 'image' : 'raw',
+      format: typeof format === 'string' ? format.slice(0, 10) : undefined,
+      bytes: Number(bytes) || undefined,
+      uploadedBy: req.user._id,
+    });
+    const saved = await shipment.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Shipment not found' });
+    console.error('Add document error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 17. Delete a document (Admin, or the staff member who uploaded it)
+exports.deleteDocument = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id);
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+    const doc = shipment.documents.id(req.params.documentId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+    const isUploader = doc.uploadedBy && String(doc.uploadedBy) === String(req.user._id);
+    if (req.user.role !== 'admin' && !isUploader) {
+      return res.status(403).json({ message: 'Only an admin or the person who uploaded it can delete this document.' });
+    }
+
+    try {
+      await cloudinary.uploader.destroy(doc.publicId, { resource_type: doc.resourceType || 'raw' });
+    } catch (cloudErr) {
+      // Still remove the record; an orphaned file is better than a broken link
+      console.error('Cloudinary delete failed for', doc.publicId, cloudErr.message);
+    }
+    doc.deleteOne();
+    const saved = await shipment.save();
+    res.json(saved);
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Document not found' });
+    console.error('Delete document error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 18. Short-lived download link for a document (staff, or the client who owns the shipment).
+// Signed API downloads work even when the Cloudinary account blocks public PDF delivery,
+// and keep documents private to people who can see the shipment.
+exports.getDocumentDownloadUrl = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id).select('sender documents');
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+
+    const isStaff = ['admin', 'employee', 'agent'].includes(req.user.role);
+    const isOwner = shipment.sender && String(shipment.sender) === String(req.user._id);
+    if (!isStaff && !isOwner) return res.status(403).json({ message: 'Access denied.' });
+
+    const doc = shipment.documents.id(req.params.documentId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+    const resourceType = doc.resourceType || 'raw';
+    // Raw public IDs already end in the extension; images need the format passed separately
+    const url = cloudinary.utils.private_download_url(doc.publicId, resourceType === 'raw' ? '' : (doc.format || ''), {
+      resource_type: resourceType,
+      type: 'upload',
+      attachment: req.query.inline !== '1',
+      expires_at: Math.floor(Date.now() / 1000) + 10 * 60,
+    });
+    res.json({ url, name: doc.name });
+  } catch (err) {
+    if (err.name === 'CastError') return res.status(404).json({ message: 'Document not found' });
     res.status(500).json({ message: err.message });
   }
 };

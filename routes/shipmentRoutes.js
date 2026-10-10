@@ -2,15 +2,20 @@ const express = require('express');
 const router = express.Router();
 const shipmentController = require('../controllers/shipmentController');
 const { authenticate, authorize } = require('../middleware/auth');
+const rateLimit = require('../middleware/rateLimit');
 
 // Get all shipments (Admin/Agent only) GET - /api/shipments
 router.get('/', authenticate, authorize('admin', 'agent', 'employee'), shipmentController.getAllShipments);
+
+// Summary counts for the shipments dashboard (Admin/Agent/Employee) GET - /api/shipments/stats
+router.get('/stats', authenticate, authorize('admin', 'agent', 'employee'), shipmentController.getShipmentStats);
 
 // Get my shipments (Authenticated users, filtered by sender) GET - /api/shipments/my-shipments
 router.get('/my-shipments', authenticate, shipmentController.getMyShipments);
 
 // Track shipment (Public, no auth needed) GET - /api/shipments/track/:trackingNumber
-router.get('/track/:trackingNumber', shipmentController.trackShipment);
+// Rate limited per IP so tracking numbers can't be guessed by brute force
+router.get('/track/:trackingNumber', rateLimit({ name: 'track', max: 30, windowMs: 60 * 1000 }), shipmentController.trackShipment);
 
 // Create a new shipment (Admin only, as per your request) POST - /api/shipments
 router.post('/', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.createShipment);
@@ -32,6 +37,13 @@ router.post('/:id/payments', authenticate, authorize('admin', 'employee', 'agent
 
 // Remove a payment recorded in error (Admin only) DELETE - /api/shipments/:id/payments/:paymentId
 router.delete('/:id/payments/:paymentId', authenticate, authorize('admin'), shipmentController.deletePayment);
+
+// Shipment documents (Admin/Employee/Agent): sign a direct Cloudinary upload, record it, delete it
+router.post('/:id/documents/signature', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.getDocumentUploadSignature);
+router.post('/:id/documents', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.addDocument);
+router.delete('/:id/documents/:documentId', authenticate, authorize('admin', 'employee', 'agent'), shipmentController.deleteDocument);
+// Signed download link (staff, or the client who owns the shipment)
+router.get('/:id/documents/:documentId/download', authenticate, shipmentController.getDocumentDownloadUrl);
 
 // Reply to a shipment (Authenticated users) POST - /api/shipments/:id/reply
 router.post('/:id/reply', authenticate, shipmentController.replyToShipment);
