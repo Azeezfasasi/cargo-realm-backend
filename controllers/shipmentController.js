@@ -2,6 +2,7 @@ const Shipment = require('../models/Shipment');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
 const QRCode = require('qrcode');
+const { waitUntil } = require('@vercel/functions');
 const { sendShipmentCreationSMS, sendShipmentStatusUpdateSMS } = require('../utils/shipmentSmsHelper');
 
 // Helper function to generate and save QR code for a shipment
@@ -17,7 +18,23 @@ const generateQRCodeForShipment = async (shipment) => {
       return true;
     }
 
-    const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${shipment.trackingNumber}`;
+    // Construct the tracking URL with proper error handling
+    const baseUrl = process.env.CLIENT_TRACKING_URL || process.env.FRONTEND_URL || 'https://tofarcargo.com';
+    
+    // Ensure baseUrl doesn't have trailing slash to avoid double slashes
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    const trackingUrl = `${cleanBaseUrl}/app/trackshipment?tracking=${encodeURIComponent(shipment.trackingNumber)}`;
+    
+    console.log(`Generating QR code with URL: ${trackingUrl}`);
+    
+    // Verify URL is valid before encoding
+    try {
+      new URL(trackingUrl);
+    } catch (urlError) {
+      console.error('Invalid tracking URL:', trackingUrl, urlError);
+      return false;
+    }
+    
     const qrCodeUrl = await QRCode.toDataURL(trackingUrl);
     shipment.qrCodeUrl = qrCodeUrl;
     await shipment.save();
@@ -332,9 +349,9 @@ exports.getAllShipments = async (req, res) => {
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
-        generateQRCodeForShipment(shipment).catch(err => 
+        waitUntil(generateQRCodeForShipment(shipment).catch(err =>
           console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-        );
+        ));
       }
     });
     
@@ -353,9 +370,9 @@ exports.getMyShipments = async (req, res) => {
     // Auto-generate missing QR codes (non-blocking)
     shipments.forEach(shipment => {
       if (!shipment.qrCodeUrl) {
-        generateQRCodeForShipment(shipment).catch(err => 
+        waitUntil(generateQRCodeForShipment(shipment).catch(err =>
           console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-        );
+        ));
       }
     });
     
@@ -376,9 +393,9 @@ exports.trackShipment = async (req, res) => {
     
     // Auto-generate QR code if missing (non-blocking)
     if (!shipment.qrCodeUrl) {
-      generateQRCodeForShipment(shipment).catch(err => 
+      waitUntil(generateQRCodeForShipment(shipment).catch(err =>
         console.error(`Failed to generate QR for ${shipment.trackingNumber}:`, err)
-      );
+      ));
     }
     
     res.json(shipment);
@@ -427,15 +444,16 @@ exports.createShipment = async (req, res) => {
     const savedShipment = await newShipment.save();
     
     // --- GENERATE QR CODE ---
-    try {
-      const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${savedShipment.trackingNumber}`;
-      const qrCodeUrl = await QRCode.toDataURL(trackingUrl);
-      savedShipment.qrCodeUrl = qrCodeUrl;
-      await savedShipment.save();
-      console.log(`QR code generated for shipment: ${savedShipment.trackingNumber}`);
-    } catch (qrError) {
-      console.error('Error generating QR code:', qrError);
-    }
+    // try {
+    //   const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${savedShipment.trackingNumber}`;
+    //   const qrCodeUrl = await QRCode.toDataURL(trackingUrl);
+    //   savedShipment.qrCodeUrl = qrCodeUrl;
+    //   await savedShipment.save();
+    //   console.log(`QR code generated for shipment: ${savedShipment.trackingNumber}`);
+    // } catch (qrError) {
+    //   console.error('Error generating QR code:', qrError);
+    // }
+    await generateQRCodeForShipment(savedShipment);
     
     // --- EMAIL NOTIFICATION: SHIPMENT CREATED ---
     if (finalSenderId) {

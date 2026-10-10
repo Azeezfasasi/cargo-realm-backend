@@ -121,6 +121,7 @@ const sendShipmentCreationSMS = async (shipment) => {
         recipientType: 'sender',
         variables: {
           trackingNumber: shipment.trackingNumber,
+          senderName: shipment.senderName,
           recipientName: shipment.recipientName,
           origin: shipment.origin,
           destination: shipment.destination,
@@ -137,6 +138,7 @@ const sendShipmentCreationSMS = async (shipment) => {
         recipientType: 'receiver',
         variables: {
           trackingNumber: shipment.trackingNumber,
+          recipientName: shipment.recipientName,
           senderName: shipment.senderName,
           origin: shipment.origin,
           destination: shipment.destination,
