@@ -19,12 +19,15 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
       retryWrites: true,
       w: 'majority',
+    }).then((conn) => {
+      // Logged once per connection, not once per request that waited on it
+      console.log(`✓ MongoDB connected to ${conn.connection.host}`);
+      return conn;
     });
   }
 
   try {
     cached.conn = await cached.promise;
-    console.log(`✓ MongoDB connected to ${cached.conn.connection.host}`);
     return cached.conn;
   } catch (err) {
     // Reset so the next request retries instead of reusing a failed promise
