@@ -4,6 +4,7 @@
     "dev": "nodemon app.js"
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.11",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.7.0",
