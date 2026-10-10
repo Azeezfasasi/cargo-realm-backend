@@ -1,4 +1,6 @@
 const Shipment = require('../models/Shipment');
+const ShipmentStatus = require('../models/ShipmentStatus');
+const crypto = require('crypto');
 const sendMail = require('../utils/mailer');
 const User = require('../models/User');
 const QRCode = require('qrcode');
@@ -415,10 +417,24 @@ exports.trackShipment = async (req, res) => {
   }
 };
 
+// CAR + 11 random digits (same format as before), checked against existing shipments
+const generateUniqueTrackingNumber = async () => {
+  for (let i = 0; i < 10; i++) {
+    const candidate = `CAR${crypto.randomInt(10000000000, 99999999999)}`;
+    if (!(await Shipment.exists({ trackingNumber: candidate }))) return candidate;
+  }
+  throw new Error('Could not generate a unique tracking number. Please try again.');
+};
+
 // 4. Create a new shipment (Admin only)
 exports.createShipment = async (req, res) => {
   try {
-    const { senderEmail, sender, ...shipmentData } = req.body;
+    // Tracking number, history, QR and delivery time are always set by the server
+    const {
+      senderEmail, sender,
+      trackingNumber: _clientTrackingNumber, trackingHistory: _h, replies: _r, qrCodeUrl: _q, deliveredAt: _d, _id: _i,
+      ...shipmentData
+    } = req.body;
 
     // Handle email-based sender assignment
     let finalSenderId = sender;
@@ -452,8 +468,18 @@ exports.createShipment = async (req, res) => {
       timestamp: new Date()
     });
 
-    const savedShipment = await newShipment.save();
-    
+    // Assign a unique tracking number; retry on the rare collision with an existing one
+    let savedShipment;
+    for (let attempt = 1; !savedShipment; attempt++) {
+      newShipment.trackingNumber = await generateUniqueTrackingNumber();
+      try {
+        savedShipment = await newShipment.save();
+      } catch (saveErr) {
+        const isTrackingCollision = saveErr.code === 11000 && saveErr.keyPattern?.trackingNumber;
+        if (!isTrackingCollision || attempt >= 5) throw saveErr;
+      }
+    }
+
     // --- GENERATE QR CODE ---
     // try {
     //   const trackingUrl = `${process.env.CLIENT_TRACKING_URL || 'https://cargorealmandlogistics.com'}/app/trackshipment?tracking=${savedShipment.trackingNumber}`;
@@ -516,12 +542,14 @@ exports.editShipment = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. You can only edit your own shipments.' });
     }
 
-    // History, replies and ownership are managed by their own endpoints. Clients also
-    // can't change status, cost or tracking number by editing their own shipment.
+    // Status (with its history and rules), replies and ownership are managed by their own
+    // endpoints; the tracking number is fixed (it's encoded in the QR code). Clients also
+    // can't change cost or facility.
     const updates = { ...req.body };
-    ['_id', 'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt'].forEach((f) => delete updates[f]);
+    ['_id', 'trackingNumber', 'status', 'deliveredAt', 'trackingHistory', 'replies', 'sender', 'qrCodeUrl', 'createdAt', 'updatedAt']
+      .forEach((f) => delete updates[f]);
     if (!isStaff) {
-      ['status', 'cost', 'trackingNumber', 'shipmentFacility'].forEach((f) => delete updates[f]);
+      ['cost', 'shipmentFacility'].forEach((f) => delete updates[f]);
     }
 
     const updatedShipment = await Shipment.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
@@ -560,6 +588,9 @@ exports.deleteShipment = async (req, res) => {
   }
 };
 
+const FINAL_STATUSES = ['delivered', 'cancelled'];
+const normalizeStatus = (s) => String(s || '').trim().toLowerCase();
+
 // 7. Change shipment status (Admin/Agent)
 exports.changeShipmentStatus = async (req, res) => {
   try {    
@@ -574,17 +605,49 @@ exports.changeShipmentStatus = async (req, res) => {
     // const updatedShipment = await Shipment.findByIdAndUpdate(id, { status }, { new: true, runValidators: true });
 
     const { id } = req.params;
-    const { status, location } = req.body;
-    
-    const updatedShipment = await Shipment.findByIdAndUpdate(
-      id,
-      {
-        status: status,
-        // Push a new entry to the trackingHistory array
-        $push: { trackingHistory: { status: status, location: location, timestamp: new Date() } }
-      },
-      { new: true, runValidators: true }
-    );
+    const status = typeof req.body.status === 'string' ? req.body.status.trim() : '';
+    const location = typeof req.body.location === 'string' ? req.body.location.trim() : undefined;
+
+    if (!status) {
+      return res.status(400).json({ message: 'Status is required.' });
+    }
+
+    const current = await Shipment.findById(id).select('status trackingNumber');
+    if (!current) {
+      return res.status(404).json({ message: 'Shipment not found' });
+    }
+
+    // Status must be one of the configured active statuses (skipped if none are configured)
+    const activeStatuses = await ShipmentStatus.find({ isActive: true }).select('name code').lean();
+    if (activeStatuses.length > 0) {
+      const allowed = new Set();
+      activeStatuses.forEach((s) => {
+        if (s.code) allowed.add(s.code.toLowerCase());
+        if (s.name) allowed.add(s.name.toLowerCase());
+      });
+      if (!allowed.has(status.toLowerCase())) {
+        return res.status(400).json({ message: `"${status}" is not an active shipment status.` });
+      }
+    }
+
+    // Delivered/cancelled are final; only an admin can reopen one (e.g. to correct a mistake)
+    if (FINAL_STATUSES.includes(normalizeStatus(current.status)) && req.user.role !== 'admin'
+        && normalizeStatus(status) !== normalizeStatus(current.status)) {
+      return res.status(403).json({
+        message: `Shipment ${current.trackingNumber} is already ${current.status}. Only an admin can change its status.`,
+      });
+    }
+
+    const historyEntry = { status, location, timestamp: new Date(), updatedBy: req.user._id };
+    const isNowDelivered = normalizeStatus(status) === 'delivered';
+    const update = {
+      status,
+      $push: { trackingHistory: historyEntry },
+      // deliveredAt records when it was actually delivered (deliveryDate is the estimate)
+      ...(isNowDelivered ? { deliveredAt: new Date() } : { $unset: { deliveredAt: 1 } }),
+    };
+
+    const updatedShipment = await Shipment.findByIdAndUpdate(id, update, { new: true, runValidators: true });
 
     if (!updatedShipment) {
       return res.status(404).json({ message: 'Shipment not found' });

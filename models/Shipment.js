@@ -5,6 +5,7 @@ const trackingHistorySchema = new mongoose.Schema({
   status: { type: String, required: true },
   location: { type: String, required: false }, // Optional
   timestamp: { type: Date, default: Date.now },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // staff member who set this status
 });
 
 const replySchema = new mongoose.Schema({
@@ -39,7 +40,8 @@ const shipmentSchema = new mongoose.Schema({
   volume: Number,
   cost: Number,
   shipmentDate: Date,
-  deliveryDate: Date,
+  deliveryDate: Date, // estimated delivery date
+  deliveredAt: Date, // set automatically when status becomes "delivered"
   notes: String,
   shipmentPieces: String,
   shipmentType: String,
